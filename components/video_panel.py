@@ -27,6 +27,16 @@ def render_video_preview(
     if frame_bgr is None or frame_bgr.size == 0:
         return
 
+    # Downscale high-resolution frames (e.g. 4K) for smooth UI streaming
+    h, w = frame_bgr.shape[:2]
+    max_preview_w = 960
+    if w > max_preview_w:
+        scale = max_preview_w / w
+        preview_h = int(h * scale)
+        frame_to_show = cv2.resize(frame_bgr, (max_preview_w, preview_h), interpolation=cv2.INTER_AREA)
+    else:
+        frame_to_show = frame_bgr
+
     # Convert BGR to RGB for Streamlit rendering
-    frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+    frame_rgb = cv2.cvtColor(frame_to_show, cv2.COLOR_BGR2RGB)
     placeholder.image(frame_rgb, caption=caption, use_container_width=True)

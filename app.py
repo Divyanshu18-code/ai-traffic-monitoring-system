@@ -54,7 +54,7 @@ from core.traffic_analyzer import TrafficAnalyzer
 from core.vehicle_counter import VehicleCounter
 from core.video_processor import VideoProcessor
 from database.db_manager import DatabaseManager
-from utils.file_utils import generate_unique_filepath, sanitize_filename
+from utils.file_utils import format_bytes, generate_unique_filepath, sanitize_filename
 from utils.logger import sanitize_url, setup_logger
 from utils.validation import (
     validate_confidence_threshold,
@@ -528,16 +528,22 @@ def render_video_analysis_page(
         unsafe_allow_html=True,
     )
 
-    tab_upload, tab_sample = st.tabs(["📁 Upload Traffic Video", "🧪 Use Synthetic Sample Video"])
+    source_mode = st.radio(
+        "Choose Video Input Source:",
+        ["📁 Upload Traffic Video File", "🧪 Preloaded Real Traffic Sample"],
+        horizontal=True,
+        key="video_source_selection_mode",
+    )
 
     selected_video_path: Optional[Path] = None
     original_name: str = ""
 
-    with tab_upload:
+    if source_mode == "📁 Upload Traffic Video File":
         uploaded_file = st.file_uploader(
-            "Select video file",
+            "Select video file to upload",
             type=["mp4", "avi", "mov", "mkv"],
             help=f"Supported formats: mp4, avi, mov, mkv. Max size: {config.max_upload_size_mb} MB",
+            key="user_uploaded_video_file",
         )
         if uploaded_file is not None:
             original_name = uploaded_file.name
@@ -546,8 +552,30 @@ def render_video_analysis_page(
             with open(target_path, "wb") as f:
                 f.write(uploaded_file.getbuffer())
             selected_video_path = target_path
+            st.success(f"Uploaded file ready: **{original_name}** ({format_bytes(target_path.stat().st_size)})")
+        else:
+            # Check for existing uploaded videos in data/uploads/
+            existing_uploads = [
+                f for f in UPLOADS_DIR.iterdir()
+                if f.is_file() and f.suffix.lower() in config.allowed_extensions and f.name != ".gitkeep"
+            ]
+            if existing_uploads:
+                st.markdown(
+                    "<p style='color: #94A3B8; font-size: 0.88rem; margin-top: 12px; margin-bottom: 4px;'>Or choose from your previously uploaded videos:</p>",
+                    unsafe_allow_html=True,
+                )
+                prev_choice = st.selectbox(
+                    "Select Uploaded Video:",
+                    options=[f.name for f in existing_uploads],
+                    index=0,
+                    key="prev_uploaded_file_select",
+                )
+                if prev_choice:
+                    selected_video_path = UPLOADS_DIR / prev_choice
+                    original_name = prev_choice
+                    st.info(f"Selected uploaded video: **{original_name}** ({format_bytes(selected_video_path.stat().st_size)})")
 
-    with tab_sample:
+    else:
         st.markdown(
             "Select a preloaded traffic video feed with real vehicles for accurate YOLO object detection and counting."
         )
