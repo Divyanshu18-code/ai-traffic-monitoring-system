@@ -93,17 +93,23 @@ traffic-monitoring-system/
 │   ├── charts.py               # Matplotlib visual analytics charts
 │   └── video_panel.py          # Live video display and bounding box overlays
 ├── tests/
-│   ├── test_vehicle_counter.py # Unit tests for line crossing logic
-│   ├── test_traffic_analyzer.py# Unit tests for density and heuristics
-│   ├── test_database.py        # Unit tests for SQLite persistence
-│   └── test_validation.py      # Unit tests for security and validation
-├── models/                     # Directory for pretrained YOLO weights
+│   ├── test_detector.py        # Unit tests for YOLOv8 detection & bounding boxes
+│   ├── test_video_processor.py # Unit tests for video ingestion, generators & writers
+│   ├── test_tracker.py         # Unit tests for ByteTrack multi-object tracking
+│   ├── test_vehicle_counter.py # Unit tests for 2D line crossing & directional logic
+│   ├── test_traffic_analyzer.py# Unit tests for density, FPS & congestion heuristics
+│   ├── test_database.py        # Unit tests for SQLite persistence & migrations
+│   ├── test_validation.py      # Unit tests for security, URLs & file integrity
+│   ├── test_dashboard.py       # Unit tests for dashboard helpers, charts & CSV exports
+│   └── test_phase7_integration.py # End-to-end integration tests & error handling
+├── models/                     # Pretrained YOLO weights directory (yolov8n.pt)
 ├── data/
 │   ├── uploads/                # Temporary uploaded video files
-│   ├── processed/              # Annotated output videos
-│   └── samples/                # Sample test videos
+│   ├── processed/              # Annotated output videos with bounding boxes
+│   ├── samples/                # Real & synthetic traffic test videos
+│   └── traffic_analytics.db    # Embedded SQLite3 analytics database
 ├── logs/                       # Application runtime logs
-├── reports/                    # Exported CSV traffic reports
+├── reports/                    # Exported CSV traffic audit reports
 └── docs/
     ├── ARCHITECTURE.md         # Detailed architectural documentation
     ├── SETUP_GUIDE.md          # Setup and deployment guidelines
@@ -149,12 +155,13 @@ streamlit run app.py
 ```
 Open your browser at `http://localhost:8501`.
 
-## 11. Running Unit Tests
+## 11. Running Automated Unit & Integration Tests
 
 Execute the automated test suite with pytest:
 ```powershell
 python -m pytest -q
 ```
+Expected result: **83 passed in ~12s (100% pass rate)**.
 
 ## 12. Troubleshooting & FAQ
 

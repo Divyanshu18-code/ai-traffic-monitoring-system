@@ -606,6 +606,10 @@ class DatabaseManager:
             logger.error("Error retrieving snapshots for session '%s': %s", session_id, e)
             return []
 
+    def get_snapshots(self, session_id: str) -> List[Dict[str, Any]]:
+        """Convenience alias for get_snapshots_for_session."""
+        return self.get_snapshots_for_session(session_id)
+
     def get_historical_statistics(self, days: Optional[int] = None) -> Dict[str, Any]:
         """
         Compute historical aggregate statistics across sessions, optionally filtered by past N days.
