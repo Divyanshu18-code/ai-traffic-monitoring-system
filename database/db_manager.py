@@ -213,6 +213,7 @@ class DatabaseManager:
         session_id: str,
         status: str,
         error_summary: Optional[str] = None,
+        **kwargs: Any,
     ) -> bool:
         """
         Update status and optional error summary for a session.
@@ -252,6 +253,7 @@ class DatabaseManager:
         inbound_count: Optional[int] = None,
         outbound_count: Optional[int] = None,
         avg_fps: Optional[float] = None,
+        **kwargs: Any,
     ) -> bool:
         """
         Update calculated statistics on an active session.
@@ -325,6 +327,7 @@ class DatabaseManager:
         output_video_path: Optional[str] = None,
         status: str = "completed",
         error_summary: Optional[str] = None,
+        **kwargs: Any,
     ) -> bool:
         """
         Finalize a session with end timestamp, metrics, and final status.
@@ -421,6 +424,7 @@ class DatabaseManager:
         trucks: int = 0,
         motorcycles: int = 0,
         total_crossings: Optional[int] = None,
+        **kwargs: Any,
     ) -> bool:
         """
         Insert a periodic traffic snapshot for a running session.
@@ -497,6 +501,7 @@ class DatabaseManager:
         trucks: int = 0,
         motorcycles: int = 0,
         total_crossings: Optional[int] = None,
+        **kwargs: Any,
     ) -> bool:
         """Backwards-compatible alias for insert_traffic_snapshot."""
         return self.insert_traffic_snapshot(
@@ -513,6 +518,7 @@ class DatabaseManager:
             trucks=trucks,
             motorcycles=motorcycles,
             total_crossings=total_crossings,
+            **kwargs,
         )
 
     def get_session(self, session_id: str) -> Optional[Dict[str, Any]]:

@@ -92,9 +92,27 @@ config = get_config()
 
 # Initialize Global Singletons & Resources
 @st.cache_resource
-def get_database_manager() -> DatabaseManager:
-    """Retrieve or initialize singleton SQLite database manager."""
+def _create_database_manager() -> DatabaseManager:
+    """Instantiate fresh database manager."""
     return DatabaseManager()
+
+
+def get_database_manager() -> DatabaseManager:
+    """Retrieve singleton SQLite database manager, refreshing if stale."""
+    global DatabaseManager
+    mgr = _create_database_manager()
+    # Check if instance is from a stale cache (missing recent methods)
+    if not hasattr(mgr, "update_session_status"):
+        try:
+            import database.db_manager
+            importlib.reload(database.db_manager)
+            from database.db_manager import DatabaseManager as FreshDatabaseManager
+            DatabaseManager = FreshDatabaseManager
+        except Exception:
+            pass
+        st.cache_resource.clear()
+        mgr = _create_database_manager()
+    return mgr
 
 
 @st.cache_resource
@@ -560,15 +578,18 @@ def render_live_monitoring_page(
 
             # Periodic snapshot to SQLite (every 30 frames)
             if frame_count % 30 == 0:
-                db.save_snapshot(
-                    session_id=session_id,
-                    frame_number=frame_idx,
-                    active_vehicles=snapshot.active_vehicles,
-                    congestion_level=snapshot.congestion_level,
-                    cumulative_inbound=snapshot.cumulative_inbound,
-                    cumulative_outbound=snapshot.cumulative_outbound,
-                    current_fps=snapshot.current_fps,
-                )
+                try:
+                    db.save_snapshot(
+                        session_id=session_id,
+                        frame_number=frame_idx,
+                        active_vehicles=snapshot.active_vehicles,
+                        congestion_level=snapshot.congestion_level,
+                        cumulative_inbound=snapshot.cumulative_inbound,
+                        cumulative_outbound=snapshot.cumulative_outbound,
+                        current_fps=snapshot.current_fps,
+                    )
+                except Exception as snap_err:
+                    logger.warning("Live snapshot save non-critical error: %s", snap_err)
 
             # 4. Draw Overlays
             annotated = tracker.draw_tracks(frame, tracks, show_trails=True)
@@ -597,22 +618,25 @@ def render_live_monitoring_page(
 
     finally:
         vp.close()
-        summary = analyzer.get_analytics_summary(counter.state)
-        db.finalize_session(
-            session_id=session_id,
-            duration_sec=summary["session_duration_sec"],
-            total_vehicles=summary["total_unique_vehicles"],
-            cars=counter.state.class_counts.get("car", 0),
-            buses=counter.state.class_counts.get("bus", 0),
-            trucks=counter.state.class_counts.get("truck", 0),
-            motorcycles=counter.state.class_counts.get("motorcycle", 0),
-            pedestrians=summary["total_unique_pedestrians"],
-            inbound_count=summary["inbound_count"],
-            outbound_count=summary["outbound_count"],
-            avg_fps=summary["average_fps"],
-            output_video_path=str(vp.output_path) if vp.output_path else None,
-        )
-        st.info("Live monitoring stopped. Session statistics recorded in database.")
+        try:
+            summary = analyzer.get_analytics_summary(counter.state)
+            db.finalize_session(
+                session_id=session_id,
+                duration_sec=summary["session_duration_sec"],
+                total_vehicles=summary["total_unique_vehicles"],
+                cars=counter.state.class_counts.get("car", 0),
+                buses=counter.state.class_counts.get("bus", 0),
+                trucks=counter.state.class_counts.get("truck", 0),
+                motorcycles=counter.state.class_counts.get("motorcycle", 0),
+                pedestrians=summary["total_unique_pedestrians"],
+                inbound_count=summary["inbound_count"],
+                outbound_count=summary["outbound_count"],
+                avg_fps=summary["average_fps"],
+                output_video_path=str(vp.output_path) if vp.output_path else None,
+            )
+            st.info("Live monitoring stopped. Session statistics recorded in database.")
+        except Exception as fin_err:
+            logger.warning("Could not finalize live session in database: %s", fin_err)
 
 
 def render_video_analysis_page(
@@ -810,20 +834,23 @@ def process_video_file(
             # Save snapshot every 20 frames
             if processed_count % 20 == 0:
                 cls_cnts = counter.state.class_counts
-                db.save_snapshot(
-                    session_id=session_id,
-                    frame_number=frame_idx,
-                    active_vehicles=snapshot.active_vehicles,
-                    congestion_level=snapshot.congestion_level,
-                    cumulative_inbound=snapshot.cumulative_inbound,
-                    cumulative_outbound=snapshot.cumulative_outbound,
-                    total_crossings=counter.state.total_crossed,
-                    current_fps=snapshot.current_fps,
-                    cars=cls_cnts.get("car", 0),
-                    buses=cls_cnts.get("bus", 0),
-                    trucks=cls_cnts.get("truck", 0),
-                    motorcycles=cls_cnts.get("motorcycle", 0),
-                )
+                try:
+                    db.save_snapshot(
+                        session_id=session_id,
+                        frame_number=frame_idx,
+                        active_vehicles=snapshot.active_vehicles,
+                        congestion_level=snapshot.congestion_level,
+                        cumulative_inbound=snapshot.cumulative_inbound,
+                        cumulative_outbound=snapshot.cumulative_outbound,
+                        total_crossings=counter.state.total_crossed,
+                        current_fps=snapshot.current_fps,
+                        cars=cls_cnts.get("car", 0),
+                        buses=cls_cnts.get("bus", 0),
+                        trucks=cls_cnts.get("truck", 0),
+                        motorcycles=cls_cnts.get("motorcycle", 0),
+                    )
+                except Exception as snap_err:
+                    logger.warning("Video snapshot save non-critical error on frame %d: %s", frame_idx, snap_err)
 
             # 4. Overlay rendering
             annotated = tracker.draw_tracks(frame, tracks, show_trails=True)
@@ -848,26 +875,33 @@ def process_video_file(
     except Exception as e:
         logger.error("Error during video processing in app: %s", e)
         st.error(f"Error during video processing: {e}")
-        db.update_session_status(session_id, status="failed", error_summary=str(e))
+        try:
+            if hasattr(db, "update_session_status"):
+                db.update_session_status(session_id, status="failed", error_summary=str(e))
+        except Exception as stat_err:
+            logger.warning("Could not record session failure status: %s", stat_err)
     finally:
         vp.close()
-        summary = analyzer.get_analytics_summary(counter.state)
-        db.finalize_session(
-            session_id=session_id,
-            duration_sec=summary["session_duration_sec"],
-            total_vehicles=summary["total_unique_vehicles"],
-            cars=counter.state.class_counts.get("car", 0),
-            buses=counter.state.class_counts.get("bus", 0),
-            trucks=counter.state.class_counts.get("truck", 0),
-            motorcycles=counter.state.class_counts.get("motorcycle", 0),
-            pedestrians=summary["total_unique_pedestrians"],
-            total_crossings=summary["total_line_crossings"],
-            inbound_count=summary["inbound_count"],
-            outbound_count=summary["outbound_count"],
-            avg_fps=summary["average_fps"],
-            output_video_path=str(vp.output_path) if vp.output_path else None,
-            status="completed",
-        )
+        try:
+            summary = analyzer.get_analytics_summary(counter.state)
+            db.finalize_session(
+                session_id=session_id,
+                duration_sec=summary["session_duration_sec"],
+                total_vehicles=summary["total_unique_vehicles"],
+                cars=counter.state.class_counts.get("car", 0),
+                buses=counter.state.class_counts.get("bus", 0),
+                trucks=counter.state.class_counts.get("truck", 0),
+                motorcycles=counter.state.class_counts.get("motorcycle", 0),
+                pedestrians=summary["total_unique_pedestrians"],
+                total_crossings=summary["total_line_crossings"],
+                inbound_count=summary["inbound_count"],
+                outbound_count=summary["outbound_count"],
+                avg_fps=summary["average_fps"],
+                output_video_path=str(vp.output_path) if vp.output_path else None,
+                status="completed",
+            )
+        except Exception as fin_err:
+            logger.warning("Could not finalize session in database: %s", fin_err)
 
     # Display final session results
     st.markdown("### 📊 Final Session Analytics")
