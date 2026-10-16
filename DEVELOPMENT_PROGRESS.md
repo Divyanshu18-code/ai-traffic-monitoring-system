@@ -59,4 +59,50 @@
 - **[x] Task 8.3**: Verified Streamlit server launch and automated end-to-end browser walkthrough.
 - **[x] Task 9.1**: Implemented session CSV export and full database history CSV download.
 - **[x] Task 13.1**: Created `docs/ARCHITECTURE.md`, `docs/SETUP_GUIDE.md`, and `docs/USER_GUIDE.md`.
-- **[x] Task 14.1**: Final integration test suite run: 27/27 tests passed.
+- **[x] Task 14.1**: Final integration test suite run: 37/37 tests passed (100% pass rate).
+
+---
+
+### Phase 2: YOLO Object Detection Guide & Verification
+
+#### 1. Module Overview (`core/detector.py`)
+- **Model Loader**: Initializes Ultralytics YOLO (`yolov8n.pt` by default). Resolves weights from `models/`, root, or downloads from official sources.
+- **Hardware Agnostic**: Automatic device selection (`cuda` if available and compatible, otherwise robust fallback to `cpu`).
+- **Target Classes**: Detects strictly traffic-relevant COCO classes:
+  - `0`: Person
+  - `2`: Car
+  - `3`: Motorcycle
+  - `5`: Bus
+  - `7`: Truck
+- **Structured Data**: Returns `List[Detection]` containing `class_id`, `class_name`, `confidence`, `bbox` (x1, y1, x2, y2), `center` (cx, cy), `bottom_center` (cx, cy), `width`, `height`, and optional `track_id`.
+- **Visualization**: `draw_detections()` overlays bounding boxes, class badges, confidence scores, and center anchor dots with boundary clamping.
+- **Error Handling**: Comprehensive protection against invalid frames, non-array inputs, empty files, and missing model weights.
+
+#### 2. Running Automated Tests
+Execute the dedicated Phase 2 detector unit tests:
+```powershell
+.\venv\Scripts\pytest.exe tests/test_detector.py -v
+```
+To run the full project test suite:
+```powershell
+.\venv\Scripts\pytest.exe -v
+```
+
+#### 3. Standalone Verification in Python
+```powershell
+.\venv\Scripts\python.exe -c "
+import os
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
+import numpy as np
+from core.detector import YOLODetector
+
+detector = YOLODetector(confidence=0.35)
+print('Model info:', detector.get_model_info())
+
+# Test with a blank frame
+blank = np.zeros((480, 640, 3), dtype=np.uint8)
+detections = detector.detect(blank)
+print('Detections on blank frame:', len(detections))
+"
+```
+

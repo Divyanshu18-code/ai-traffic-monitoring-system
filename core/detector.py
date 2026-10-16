@@ -37,6 +37,7 @@ from config.settings import (
     CLASS_COLORS_BGR,
     COCO_TRAFFIC_CLASSES,
     MODELS_DIR,
+    PROJECT_ROOT,
     get_config,
 )
 from utils.logger import setup_logger
@@ -114,6 +115,8 @@ class YOLODetector:
 
     def _resolve_device(self, requested_device: str) -> str:
         """Verify device availability with clear CPU fallback."""
+        if not requested_device or not isinstance(requested_device, str):
+            return "cpu"
         requested = requested_device.lower().strip()
         if requested in ("cuda", "0", "gpu"):
             if torch.cuda.is_available():
@@ -126,17 +129,34 @@ class YOLODetector:
 
     def _resolve_model_path(self, model_input: Union[str, Path]) -> str:
         """Locate weights in models/ folder, local workspace, or resolve standard name."""
+        if not model_input or not str(model_input).strip():
+            raise ValueError("Model path or name cannot be empty.")
+
         input_path = Path(model_input)
-        if input_path.exists():
+
+        # 1. Direct path exists
+        if input_path.is_file():
             return str(input_path.resolve())
 
-        # Check in models directory
+        # 2. Check in models/ directory
         candidate_in_models = MODELS_DIR / input_path.name
-        if candidate_in_models.exists():
+        if candidate_in_models.is_file():
             return str(candidate_in_models.resolve())
 
-        # Return model name (Ultralytics handles standard download if network available)
-        return str(input_path.name)
+        # 3. Check in project root
+        candidate_in_root = PROJECT_ROOT / input_path.name
+        if candidate_in_root.is_file():
+            return str(candidate_in_root.resolve())
+
+        # 4. Standard YOLO model name (Ultralytics handles standard download if network available)
+        name_lower = input_path.name.lower()
+        if (name_lower.startswith("yolo") or name_lower.startswith("rtdetr")) and name_lower.endswith(".pt"):
+            return str(input_path.name)
+
+        # 5. Otherwise raise FileNotFoundError
+        raise FileNotFoundError(
+            f"Model weights file '{model_input}' not found in '{MODELS_DIR}' or project root."
+        )
 
     def _load_model(self) -> None:
         """Load YOLO model weights with error handling."""
@@ -144,10 +164,16 @@ class YOLODetector:
             logger.info("Loading YOLO model: %s on device: %s", self.model_path, self.device)
             self.model = YOLO(self.model_path)
             logger.info("YOLO model successfully initialized.")
-        except Exception as e:
-            logger.error("Failed to initialize YOLO model '%s': %s", self.model_path, e)
+        except FileNotFoundError as fnf:
+            logger.error("Model file not found: %s", fnf)
             self.model = None
-            raise RuntimeError(f"Could not load YOLO model weights from '{self.model_path}': {e}") from e
+            raise
+        except Exception as e:
+            logger.error("Failed to initialize or download YOLO model '%s': %s", self.model_path, e)
+            self.model = None
+            raise RuntimeError(
+                f"Could not load or download YOLO model weights from '{self.model_path}': {e}"
+            ) from e
 
     def is_ready(self) -> bool:
         """Check if detector is ready for inference."""
@@ -167,7 +193,8 @@ class YOLODetector:
             logger.error("Detector model is not loaded.")
             return []
 
-        if frame is None or frame.size == 0:
+        if frame is None or not isinstance(frame, np.ndarray) or frame.size == 0 or len(frame.shape) < 2:
+            logger.warning("Invalid or empty input frame provided to detector.")
             return []
 
         target_class_ids = list(self.target_classes.keys())
@@ -240,17 +267,32 @@ class YOLODetector:
         Returns:
             Annotated frame (modified in-place or copied).
         """
+        if frame is None or not isinstance(frame, np.ndarray) or frame.size == 0 or len(frame.shape) < 2:
+            logger.warning("Invalid or empty frame provided for drawing detections.")
+            return frame
+
         output = frame.copy()
+        if not detections:
+            return output
+
+        h, w = output.shape[:2]
 
         for det in detections:
             x1, y1, x2, y2 = det.bbox
+            x1 = max(0, min(x1, w - 1))
+            y1 = max(0, min(y1, h - 1))
+            x2 = max(0, min(x2, w - 1))
+            y2 = max(0, min(y2, h - 1))
+            cx = max(0, min(det.center[0], w - 1))
+            cy = max(0, min(det.center[1], h - 1))
+
             color = CLASS_COLORS_BGR.get(det.class_name, (0, 255, 0))
 
             # Draw bounding box
             cv2.rectangle(output, (x1, y1), (x2, y2), color, 2)
 
             # Draw center point
-            cv2.circle(output, det.center, 3, color, -1)
+            cv2.circle(output, (cx, cy), 3, color, -1)
 
             # Prepare label text
             label_parts = [det.class_name.capitalize()]
