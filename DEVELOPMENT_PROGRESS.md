@@ -197,4 +197,82 @@ print('Counting Summary:', result.counting_summary)
 - **Extreme Speeds**: Vehicles moving faster than the counting band per frame skip can occasionally fail intersection if `frame_skip` is set too high.
 - **Camera Vibration**: Significant camera shake without stabilization may induce jitter in ground-contact coordinate estimation.
 
+---
+
+### Phase 5: SQLite Database Integration Guide & Verification
+
+#### 1. Architecture & Module Overview (`database/db_manager.py`)
+- **Engine**: Python's native `sqlite3` with `PRAGMA foreign_keys = ON;` and `PRAGMA busy_timeout = 10000;`.
+- **Database Location**: Default at `data/traffic_analytics.db` (configurable via `DatabaseManager(db_path=...)` or `DATABASE_PATH` environment variable).
+- **Safe Initialization & Non-Destructive Migrations**:
+  - `_ensure_initialized()` executes table creation scripts and automatically checks existing schemas via `PRAGMA table_info`.
+  - Non-destructively migrates missing columns (`total_crossings`, `status`, `error_summary`, vehicle category counts) without erasing or corrupting existing user records.
+  - Automatically indexes timestamp and foreign key columns for fast historical queries.
+- **Data Validation & Sanitization**:
+  - Validates non-negative counts (`total_vehicles`, `cars`, `buses`, `trucks`, `motorcycles`, `pedestrians`, `total_crossings`, `inbound_count`, `outbound_count`).
+  - Validates non-negative duration and FPS.
+  - Validates status enum (`'started'`, `'in_progress'`, `'completed'`, `'failed'`, `'cancelled'`).
+  - Formats timestamps to standard `'YYYY-MM-DD HH:MM:SS'`.
+  - 100% parameterized SQL queries (no string concatenation or SQL injection risks).
+
+#### 2. Table Schema Summary
+- **`sessions`**:
+  - `session_id` (TEXT PRIMARY KEY): Unique UUID/timestamp identifier.
+  - `source_type` (TEXT): Video file, webcam, or IP camera.
+  - `source_name` (TEXT): File name or sanitized stream identifier.
+  - `start_time` / `end_time` (TIMESTAMP): Session boundary timestamps.
+  - `duration_sec` (REAL): Net processing duration.
+  - `total_vehicles` (INTEGER): Unique tracked motor vehicles observed.
+  - `cars`, `buses`, `trucks`, `motorcycles`, `pedestrians` (INTEGER): Unique class counts.
+  - `total_crossings`, `inbound_count`, `outbound_count` (INTEGER): Line-crossing statistics.
+  - `avg_fps` (REAL): Moving average processing throughput.
+  - `output_video_path` (TEXT): Path to saved annotated video file.
+  - `status` (TEXT): `'started'`, `'in_progress'`, `'completed'`, `'failed'`, `'cancelled'`.
+  - `error_summary` (TEXT): Captured exception details upon failure.
+- **`traffic_snapshots`**:
+  - `id` (INTEGER PRIMARY KEY AUTOINCREMENT).
+  - `session_id` (TEXT FOREIGN KEY -> `sessions.session_id` ON DELETE CASCADE).
+  - `timestamp` (TIMESTAMP): Moment of snapshot.
+  - `frame_number` (INTEGER): Sequential frame index.
+  - `active_vehicles` (INTEGER): Motor vehicles present in current frame.
+  - `cars`, `buses`, `trucks`, `motorcycles` (INTEGER): Category counts in frame.
+  - `total_crossings`, `cumulative_inbound`, `cumulative_outbound` (INTEGER): Cumulative line crossings.
+  - `congestion_level` (TEXT): `'LOW'`, `'MODERATE'`, `'HIGH'`.
+  - `current_fps` (REAL): Instantaneous processing FPS.
+- **`system_metadata`**: Key-value pair storage for runtime configurations and audit tags.
+
+#### 3. Session Lifecycle & Module Integration
+1. **Creation**: Session initiated with `create_session(session_id, source_type, source_name, status='started')`.
+2. **Periodic Snapshots**: `VideoProcessor.process_video()` and `app.py` emit snapshots every $N$ frames via `insert_traffic_snapshot()`.
+3. **Resilience**: Database failures are safely caught and logged so video processing is never interrupted.
+4. **Finalization**: `finalize_session()` records total unique vehicles, line crossings, duration, FPS, and status (`'completed'`).
+5. **Failure Recovery**: In the event of an unhandled exception, `update_session_status(session_id, status='failed', error_summary=str(e))` ensures the incident is logged in SQLite.
+
+#### 4. Running Automated Tests
+Execute the 16 dedicated Phase 5 database unit and integration tests:
+```powershell
+.\venv\Scripts\pytest.exe tests/test_database.py -v
+```
+
+Execute the entire project test suite:
+```powershell
+python -m pytest -q
+```
+
+#### 5. Inspecting Database Records via CLI
+```powershell
+.\venv\Scripts\python.exe -c "
+from database.db_manager import DatabaseManager
+db = DatabaseManager()
+print('Total Sessions:', len(db.get_all_sessions()))
+print('Aggregates:', db.get_historical_statistics())
+print('Recent Sessions:', [s['session_id'] for s in db.get_recent_sessions(3)])
+"
+```
+
+#### 6. Known Limitations
+- **SQLite Concurrency**: SQLite employs database-level file locks for write transactions. Under high multi-threaded concurrency, operations queue up to `busy_timeout = 10000ms`.
+- **Large Video Blobs**: Video files are saved to disk (`data/processed/`), not stored as BLOBs in the SQLite database, preserving database speed and low memory footprint.
+
+
 

@@ -701,6 +701,7 @@ def process_video_file(
 
             # Save snapshot every 20 frames
             if processed_count % 20 == 0:
+                cls_cnts = counter.state.class_counts
                 db.save_snapshot(
                     session_id=session_id,
                     frame_number=frame_idx,
@@ -708,7 +709,12 @@ def process_video_file(
                     congestion_level=snapshot.congestion_level,
                     cumulative_inbound=snapshot.cumulative_inbound,
                     cumulative_outbound=snapshot.cumulative_outbound,
+                    total_crossings=counter.state.total_crossed,
                     current_fps=snapshot.current_fps,
+                    cars=cls_cnts.get("car", 0),
+                    buses=cls_cnts.get("bus", 0),
+                    trucks=cls_cnts.get("truck", 0),
+                    motorcycles=cls_cnts.get("motorcycle", 0),
                 )
 
             # 4. Overlay rendering
@@ -731,6 +737,10 @@ def process_video_file(
         progress_bar.progress(1.0, text="Processing Complete!")
         status_placeholder.success("🎉 Video analysis successfully completed!")
 
+    except Exception as e:
+        logger.error("Error during video processing in app: %s", e)
+        st.error(f"Error during video processing: {e}")
+        db.update_session_status(session_id, status="failed", error_summary=str(e))
     finally:
         vp.close()
         summary = analyzer.get_analytics_summary(counter.state)
@@ -743,10 +753,12 @@ def process_video_file(
             trucks=counter.state.class_counts.get("truck", 0),
             motorcycles=counter.state.class_counts.get("motorcycle", 0),
             pedestrians=summary["total_unique_pedestrians"],
+            total_crossings=summary["total_line_crossings"],
             inbound_count=summary["inbound_count"],
             outbound_count=summary["outbound_count"],
             avg_fps=summary["average_fps"],
             output_video_path=str(vp.output_path) if vp.output_path else None,
+            status="completed",
         )
 
     # Display final session results

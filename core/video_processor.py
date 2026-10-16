@@ -9,6 +9,7 @@ and resource lifecycle management.
 from __future__ import annotations
 
 import time
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, Generator, List, Optional, Tuple, Union
@@ -59,6 +60,7 @@ class ProcessingResult:
     output_path: Optional[str] = None
     error_message: Optional[str] = None
     counting_summary: Optional[Dict[str, Any]] = None
+    session_id: Optional[str] = None
 
 
 class VideoProcessor:
@@ -357,6 +359,9 @@ class VideoProcessor:
         frame_skip: int = 0,
         resize_dim: Optional[Tuple[int, int]] = None,
         stop_check: Optional[Callable[[], bool]] = None,
+        db: Optional[Any] = None,
+        session_id: Optional[str] = None,
+        snapshot_interval: int = 30,
     ) -> ProcessingResult:
         """
         Run the end-to-end video processing pipeline with detection, tracking, and counting.
@@ -369,9 +374,12 @@ class VideoProcessor:
             frame_skip: Process every (frame_skip + 1)-th frame.
             resize_dim: Optional (width, height) resizing target.
             stop_check: Optional callable that halts processing early if True.
+            db: Optional DatabaseManager instance for session persistence.
+            session_id: Optional unique session ID. If not provided and db is active, one is generated.
+            snapshot_interval: Frame interval for recording periodic traffic snapshots in db.
 
         Returns:
-            ProcessingResult containing summary metrics, counting summary, and output file path.
+            ProcessingResult containing summary metrics, counting summary, output file path, and session_id.
         """
         if not self.is_opened:
             ok, msg = self.open()
@@ -391,6 +399,20 @@ class VideoProcessor:
             tracker.reset()
         if counter is not None:
             counter.reset()
+
+        active_session_id = session_id
+        if db is not None:
+            if not active_session_id:
+                active_session_id = f"sess_{int(time.time())}_{uuid.uuid4().hex[:6]}"
+            try:
+                db.create_session(
+                    session_id=active_session_id,
+                    source_type=self.source_type,
+                    source_name=Path(str(self.source)).name,
+                    status="started",
+                )
+            except Exception as dbe:
+                logger.warning("Database session start note: %s", dbe)
 
         start_time = time.time()
         processed_count = 0
@@ -414,6 +436,30 @@ class VideoProcessor:
                 now = time.time()
                 elapsed = max(0.001, now - start_time)
                 instant_fps = 1.0 / max(0.001, (now - frame_start))
+
+                # Periodic snapshot recording
+                if db is not None and active_session_id and (processed_count % snapshot_interval == 0):
+                    try:
+                        act_veh = sum(1 for d in detections if d.class_name in ("car", "bus", "truck", "motorcycle"))
+                        c_in = counter.state.total_inbound if counter else 0
+                        c_out = counter.state.total_outbound if counter else 0
+                        c_tot = counter.state.total_crossed if counter else 0
+                        cls_counts = counter.state.class_counts if counter else {}
+                        db.insert_traffic_snapshot(
+                            session_id=active_session_id,
+                            frame_number=frame_idx,
+                            active_vehicles=act_veh,
+                            cumulative_inbound=c_in,
+                            cumulative_outbound=c_out,
+                            total_crossings=c_tot,
+                            current_fps=instant_fps,
+                            cars=cls_counts.get("car", 0),
+                            buses=cls_counts.get("bus", 0),
+                            trucks=cls_counts.get("truck", 0),
+                            motorcycles=cls_counts.get("motorcycle", 0),
+                        )
+                    except Exception as dbe:
+                        logger.debug("Database snapshot note: %s", dbe)
 
                 progress_pct = (
                     round((processed_count / total_frames) * 100, 1)
@@ -446,6 +492,29 @@ class VideoProcessor:
                 else:
                     logger.warning("Output video file was not generated or is empty.")
 
+            # Finalize database session
+            if db is not None and active_session_id:
+                try:
+                    c_counts = counter.state.class_counts if counter else {}
+                    db.finalize_session(
+                        session_id=active_session_id,
+                        duration_sec=elapsed_total,
+                        total_vehicles=counter.state.total_unique_vehicles if counter else 0,
+                        cars=c_counts.get("car", 0),
+                        buses=c_counts.get("bus", 0),
+                        trucks=c_counts.get("truck", 0),
+                        motorcycles=c_counts.get("motorcycle", 0),
+                        pedestrians=counter.state.total_unique_pedestrians if counter else 0,
+                        total_crossings=counter.state.total_crossed if counter else 0,
+                        inbound_count=counter.state.total_inbound if counter else 0,
+                        outbound_count=counter.state.total_outbound if counter else 0,
+                        avg_fps=avg_fps,
+                        output_video_path=final_out_str,
+                        status="completed",
+                    )
+                except Exception as dbe:
+                    logger.warning("Database session finalization note: %s", dbe)
+
             return ProcessingResult(
                 success=True,
                 total_frames=total_frames,
@@ -454,10 +523,17 @@ class VideoProcessor:
                 avg_fps=round(avg_fps, 2),
                 output_path=final_out_str,
                 counting_summary=counter.get_summary() if counter is not None else None,
+                session_id=active_session_id,
             )
 
         except Exception as e:
             logger.error("Error during video processing: %s", e)
+            if db is not None and active_session_id:
+                try:
+                    db.update_session_status(active_session_id, status="failed", error_summary=str(e))
+                except Exception:
+                    pass
+
             return ProcessingResult(
                 success=False,
                 total_frames=total_frames,
@@ -466,6 +542,7 @@ class VideoProcessor:
                 avg_fps=round(processed_count / max(0.001, time.time() - start_time), 2),
                 error_message=str(e),
                 counting_summary=counter.get_summary() if counter is not None else None,
+                session_id=active_session_id,
             )
         finally:
             self.close()
