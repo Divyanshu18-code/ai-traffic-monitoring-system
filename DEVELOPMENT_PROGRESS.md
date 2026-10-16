@@ -136,3 +136,65 @@ python -m pytest -q
   - Live webcam and RTSP camera streams have indefinite frame counts (`total_frames = -1`), so progress percentage is not calculable for infinite streams.
   - Corrupt video streams with missing MOOV atoms or zero decodable frames are safely rejected during input validation.
 
+---
+
+### Phase 4: Object Tracking & Vehicle Counting Guide & Verification
+
+#### 1. Architecture Overview
+- **Tracking Engine (`core/tracker.py`)**:
+  - Leverages Ultralytics ByteTrack API (`model.track(..., persist=True, tracker='bytetrack.yaml')`).
+  - Maintains persistent IDs across consecutive frames and keeps trajectory histories (FIFO deque of `(cx, cy)` points).
+  - Class stabilization memory prevents momentary flickering classifications.
+  - Session isolation: `reset()` completely clears track histories and model predictor tracking state between runs.
+- **Directional Vehicle Counter (`core/vehicle_counter.py`)**:
+  - Evaluates geometric 2D line segment-segment intersections using signed cross-product determinants.
+  - Distinguishes observed unique objects (`unique_vehicles`, `unique_pedestrians`) from actual line crossings (`total_crossed`).
+  - **Inbound Direction**: Transition from negative half-plane to positive half-plane (downward travel: `y_curr > y_prev`).
+  - **Outbound Direction**: Transition from positive half-plane to negative half-plane (upward travel: `y_curr < y_prev`).
+  - **Duplicate Prevention**: Once a tracked object crosses, its ID is stored in `crossed_track_ids` so lingering or hovering objects near the line are never counted twice.
+- **Pipeline Integration (`core/video_processor.py`)**:
+  - `process_frame()` and `process_video()` natively support `tracker` and `counter` instances.
+  - Returns `counting_summary` inside `ProcessingResult`.
+
+#### 2. Running Automated Tests
+Run dedicated Phase 4 tracking and vehicle counting tests:
+```powershell
+.\venv\Scripts\pytest.exe tests/test_tracker.py tests/test_vehicle_counter.py -v
+```
+Run the full project test suite:
+```powershell
+python -m pytest -q
+```
+
+#### 3. Standalone Verification in Python
+```powershell
+.\venv\Scripts\python.exe -c "
+import os
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
+from pathlib import Path
+from core.detector import YOLODetector
+from core.tracker import ByteTracker
+from core.vehicle_counter import VehicleCounter
+from core.video_processor import VideoProcessor
+
+detector = YOLODetector(confidence=0.30)
+tracker = ByteTracker(detector)
+counter = VehicleCounter(line_ratio=0.55)
+
+sample_path = Path('data/samples/sample_traffic_feed.mp4')
+processor = VideoProcessor(source=sample_path, output_filename='phase4_smoke.mp4', save_output=True)
+result = processor.process_video(detector=detector, tracker=tracker, counter=counter)
+
+print('Success:', result.success)
+print('Processed Frames:', result.processed_frames)
+print('Average FPS:', result.avg_fps)
+print('Counting Summary:', result.counting_summary)
+"
+```
+
+#### 4. Known Limitations
+- **ID Switching**: In dense stop-and-go traffic with severe vehicle occlusion, ByteTrack may occasionally assign a new ID to a re-emerging vehicle.
+- **Extreme Speeds**: Vehicles moving faster than the counting band per frame skip can occasionally fail intersection if `frame_skip` is set too high.
+- **Camera Vibration**: Significant camera shake without stabilization may induce jitter in ground-contact coordinate estimation.
+
+

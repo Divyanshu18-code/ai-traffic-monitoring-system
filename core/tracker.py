@@ -66,7 +66,8 @@ class ByteTracker:
             logger.error("Detector is not initialized for tracking.")
             return []
 
-        if frame is None or frame.size == 0:
+        if frame is None or not isinstance(frame, np.ndarray) or frame.size == 0 or len(frame.shape) < 2:
+            logger.warning("Invalid or empty input frame provided to tracker.")
             return []
 
         target_class_ids = list(self.detector.target_classes.keys())
@@ -155,6 +156,9 @@ class ByteTracker:
         Returns:
             Annotated frame.
         """
+        if frame is None or not isinstance(frame, np.ndarray) or frame.size == 0:
+            return frame
+
         # First draw bounding boxes and badges via detector utility
         output = self.detector.draw_detections(
             frame, detections, show_track_id=True, show_confidence=show_confidence
@@ -182,6 +186,23 @@ class ByteTracker:
         """Return trajectory history coordinates for a specific track ID."""
         return list(self.track_history.get(track_id, []))
 
+    def update_config(
+        self,
+        tracker_type: Optional[str] = None,
+        max_history: Optional[int] = None,
+        confidence: Optional[float] = None,
+        iou: Optional[float] = None,
+    ) -> None:
+        """Adjust tracker and detector hyperparameters dynamically."""
+        if tracker_type is not None:
+            self.tracker_type = tracker_type
+        if max_history is not None:
+            self.max_history = max_history
+        if confidence is not None:
+            self.detector.confidence = confidence
+        if iou is not None:
+            self.detector.iou = iou
+
     def reset(self) -> None:
         """
         Reset tracker state and clear track histories for a new session.
@@ -189,8 +210,11 @@ class ByteTracker:
         self.track_history.clear()
         self.track_classes.clear()
         # Reset tracker in Ultralytics model if internal tracker exists
-        if self.detector.model is not None and hasattr(self.detector.model, "predictor"):
-            predictor = self.detector.model.predictor
-            if predictor is not None and hasattr(predictor, "trackers"):
-                predictor.trackers = None
+        try:
+            if self.detector.model is not None and hasattr(self.detector.model, "predictor"):
+                predictor = self.detector.model.predictor
+                if predictor is not None and hasattr(predictor, "trackers"):
+                    predictor.trackers = None
+        except Exception as e:
+            logger.debug("Notice on predictor tracker reset: %s", e)
         logger.info("ByteTracker history and tracking state reset.")

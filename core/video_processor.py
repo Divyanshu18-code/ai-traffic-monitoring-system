@@ -18,6 +18,8 @@ import numpy as np
 
 from config.settings import PROCESSED_DIR, get_config
 from core.detector import Detection, YOLODetector
+from core.tracker import ByteTracker
+from core.vehicle_counter import VehicleCounter
 from utils.file_utils import generate_unique_filepath
 from utils.logger import sanitize_url, setup_logger
 from utils.validation import (
@@ -56,6 +58,7 @@ class ProcessingResult:
     avg_fps: float
     output_path: Optional[str] = None
     error_message: Optional[str] = None
+    counting_summary: Optional[Dict[str, Any]] = None
 
 
 class VideoProcessor:
@@ -282,19 +285,25 @@ class VideoProcessor:
         self,
         frame: np.ndarray,
         detector: YOLODetector,
+        tracker: Optional[ByteTracker] = None,
+        counter: Optional[VehicleCounter] = None,
         resize_dim: Optional[Tuple[int, int]] = None,
-        show_track_id: bool = False,
+        show_track_id: bool = True,
         show_confidence: bool = True,
+        show_counting_overlay: bool = True,
     ) -> Tuple[np.ndarray, List[Detection]]:
         """
-        Process a single video frame with YOLO detection and overlay rendering.
+        Process a single video frame with YOLO detection/tracking and counting overlay rendering.
 
         Args:
             frame: Input BGR numpy array.
             detector: Initialized YOLODetector instance.
+            tracker: Optional ByteTracker instance for multi-object tracking.
+            counter: Optional VehicleCounter instance for line-crossing counting.
             resize_dim: Optional (width, height) to resize frame before detection.
-            show_track_id: Whether to display tracking ID (Phase 4).
+            show_track_id: Whether to display tracking ID.
             show_confidence: Whether to display confidence score on label.
+            show_counting_overlay: Whether to render line and count HUD.
 
         Returns:
             Tuple of (annotated_frame, list_of_detections).
@@ -308,35 +317,61 @@ class VideoProcessor:
             if target_w > 0 and target_h > 0 and (frame.shape[1] != target_w or frame.shape[0] != target_h):
                 processed = cv2.resize(frame, (target_w, target_h))
 
-        detections = detector.detect(processed)
-        annotated = detector.draw_detections(
-            processed,
-            detections,
-            show_track_id=show_track_id,
-            show_confidence=show_confidence,
-        )
+        # 1. Detection or Tracking
+        if tracker is not None:
+            detections = tracker.track(processed)
+        else:
+            detections = detector.detect(processed)
+
+        # 2. Line Crossing Counting
+        if counter is not None:
+            counter.process_frame(detections, frame_shape=processed.shape[:2])
+
+        # 3. Visualization Overlays
+        if tracker is not None:
+            annotated = tracker.draw_tracks(
+                processed,
+                detections,
+                show_trails=True,
+                show_confidence=show_confidence,
+            )
+        else:
+            annotated = detector.draw_detections(
+                processed,
+                detections,
+                show_track_id=show_track_id,
+                show_confidence=show_confidence,
+            )
+
+        if counter is not None and show_counting_overlay:
+            annotated = counter.draw_counting_overlay(annotated, show_line=True, show_hud=True)
+
         return annotated, detections
 
     def process_video(
         self,
         detector: YOLODetector,
+        tracker: Optional[ByteTracker] = None,
+        counter: Optional[VehicleCounter] = None,
         progress_callback: Optional[Callable[[ProcessingProgress], None]] = None,
         frame_skip: int = 0,
         resize_dim: Optional[Tuple[int, int]] = None,
         stop_check: Optional[Callable[[], bool]] = None,
     ) -> ProcessingResult:
         """
-        Run the end-to-end video processing pipeline with detection and optional saving.
+        Run the end-to-end video processing pipeline with detection, tracking, and counting.
 
         Args:
             detector: YOLODetector instance.
+            tracker: Optional ByteTracker instance.
+            counter: Optional VehicleCounter instance.
             progress_callback: Optional callback receiving ProcessingProgress on each frame.
             frame_skip: Process every (frame_skip + 1)-th frame.
             resize_dim: Optional (width, height) resizing target.
             stop_check: Optional callable that halts processing early if True.
 
         Returns:
-            ProcessingResult containing summary metrics and output file path.
+            ProcessingResult containing summary metrics, counting summary, and output file path.
         """
         if not self.is_opened:
             ok, msg = self.open()
@@ -351,6 +386,12 @@ class VideoProcessor:
                     error_message=msg,
                 )
 
+        # Reset tracker and counter state for session isolation
+        if tracker is not None:
+            tracker.reset()
+        if counter is not None:
+            counter.reset()
+
         start_time = time.time()
         processed_count = 0
         total_frames = self.total_frames
@@ -359,7 +400,11 @@ class VideoProcessor:
             for frame_idx, frame in self.frame_generator(frame_skip=frame_skip, stop_check=stop_check):
                 frame_start = time.time()
                 annotated, detections = self.process_frame(
-                    frame, detector, resize_dim=resize_dim
+                    frame=frame,
+                    detector=detector,
+                    tracker=tracker,
+                    counter=counter,
+                    resize_dim=resize_dim,
                 )
                 processed_count += 1
 
@@ -408,6 +453,7 @@ class VideoProcessor:
                 elapsed_time_sec=round(elapsed_total, 2),
                 avg_fps=round(avg_fps, 2),
                 output_path=final_out_str,
+                counting_summary=counter.get_summary() if counter is not None else None,
             )
 
         except Exception as e:
@@ -419,6 +465,7 @@ class VideoProcessor:
                 elapsed_time_sec=round(time.time() - start_time, 2),
                 avg_fps=round(processed_count / max(0.001, time.time() - start_time), 2),
                 error_message=str(e),
+                counting_summary=counter.get_summary() if counter is not None else None,
             )
         finally:
             self.close()

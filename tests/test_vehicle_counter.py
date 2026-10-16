@@ -160,3 +160,119 @@ def test_counter_reset():
     assert counter.state.total_crossed == 0
     assert counter.state.total_inbound == 0
     assert len(counter.state.unique_objects) == 0
+
+
+def test_same_vehicle_multiple_frames_no_crossing():
+    """Same vehicle appearing in multiple frames without crossing line must not increment counts."""
+    counter = VehicleCounter(line_ratio=0.50)
+    counter.update_line_geometry(640, 480)  # line at y=240
+
+    for y in [50, 70, 90, 110, 130, 150, 170]:
+        counter.process_frame([create_detection(track_id=5, class_name="car", y_bottom=y)])
+
+    summary = counter.get_summary()
+    assert summary["unique_vehicles"] == 1
+    assert summary["cars"] == 1
+    assert summary["total_crossed"] == 0
+    assert summary["total_inbound"] == 0
+    assert summary["total_outbound"] == 0
+
+
+def test_duplicate_crossing_prevention():
+    """A vehicle that crosses once and hovers near the line must not be counted repeatedly."""
+    counter = VehicleCounter(line_ratio=0.50)
+    counter.update_line_geometry(640, 480)  # line at y=240
+
+    # Frame 1: above line
+    counter.process_frame([create_detection(track_id=7, class_name="truck", y_bottom=220)])
+    # Frame 2: crosses downwards (inbound crossing)
+    counter.process_frame([create_detection(track_id=7, class_name="truck", y_bottom=260)])
+    assert counter.state.total_inbound == 1
+    assert counter.state.total_crossed == 1
+
+    # Frames 3-8: hovers right below the line
+    for hover_y in [250, 245, 255, 248, 252, 260]:
+        counter.process_frame([create_detection(track_id=7, class_name="truck", y_bottom=hover_y)])
+
+    assert counter.state.total_inbound == 1
+    assert counter.state.total_crossed == 1
+    assert counter.state.total_unique_vehicles == 1
+
+
+def test_new_vehicle_with_new_tracking_id():
+    """Each new tracking ID increments observed vehicles and respective class counts."""
+    counter = VehicleCounter(line_ratio=0.50)
+    counter.update_line_geometry(640, 480)
+
+    # Frame 1: Vehicle 1 (car)
+    counter.process_frame([create_detection(track_id=1, class_name="car", y_bottom=100)])
+    assert counter.state.total_unique_vehicles == 1
+    assert counter.state.class_counts["car"] == 1
+
+    # Frame 2: Vehicle 2 (motorcycle) enters
+    counter.process_frame([
+        create_detection(track_id=1, class_name="car", y_bottom=120),
+        create_detection(track_id=2, class_name="motorcycle", y_bottom=80),
+    ])
+    assert counter.state.total_unique_vehicles == 2
+    assert counter.state.class_counts["car"] == 1
+    assert counter.state.class_counts["motorcycle"] == 1
+
+    # Frame 3: Vehicle 3 (truck) enters
+    counter.process_frame([
+        create_detection(track_id=1, class_name="car", y_bottom=140),
+        create_detection(track_id=2, class_name="motorcycle", y_bottom=100),
+        create_detection(track_id=3, class_name="truck", y_bottom=90),
+    ])
+    assert counter.state.total_unique_vehicles == 3
+    assert counter.state.class_counts["truck"] == 1
+
+
+def test_pedestrian_tracked_separately():
+    """Pedestrians must be counted separately from motor vehicles."""
+    counter = VehicleCounter(line_ratio=0.50)
+    counter.update_line_geometry(640, 480)
+
+    counter.process_frame([
+        create_detection(track_id=1, class_name="car", y_bottom=100),
+        create_detection(track_id=2, class_name="person", y_bottom=120),
+        create_detection(track_id=3, class_name="person", y_bottom=140),
+    ])
+
+    summary = counter.get_summary()
+    assert summary["unique_vehicles"] == 1
+    assert summary["unique_pedestrians"] == 2
+    assert summary["cars"] == 1
+    assert summary["pedestrians"] == 2
+
+
+def test_empty_detection_frames():
+    """Empty frames must be processed without altering counts or throwing errors."""
+    counter = VehicleCounter(line_ratio=0.50)
+    counter.update_line_geometry(640, 480)
+
+    counter.process_frame([create_detection(track_id=1, class_name="car", y_bottom=100)])
+    assert counter.state.total_unique_vehicles == 1
+
+    # Multiple empty frames
+    counter.process_frame([])
+    counter.process_frame([])
+    counter.process_frame([])
+
+    assert counter.state.total_unique_vehicles == 1
+    assert counter.state.total_crossed == 0
+
+
+def test_custom_two_point_counting_line():
+    """Verify line crossing with custom two-point line coordinates."""
+    # Diagonal counting line from (100, 200) to (500, 300)
+    custom_coords = ((100, 200), (500, 300))
+    counter = VehicleCounter(custom_line=custom_coords)
+    counter.update_line_geometry(640, 480)
+
+    # Move from (300, 200) to (300, 300)
+    counter.process_frame([create_detection(track_id=99, class_name="car", y_bottom=200, x_center=300)])
+    counter.process_frame([create_detection(track_id=99, class_name="car", y_bottom=300, x_center=300)])
+
+    assert counter.state.total_crossed == 1
+
