@@ -2,6 +2,8 @@
 from components.charts import (
     plot_class_distribution,
     plot_directional_traffic,
+    plot_fps_performance,
+    plot_sessions_history,
     plot_traffic_trend,
 )
 from components.metrics import (
@@ -22,5 +24,7 @@ __all__ = [
     "plot_class_distribution",
     "plot_directional_traffic",
     "plot_traffic_trend",
+    "plot_fps_performance",
+    "plot_sessions_history",
     "render_video_preview",
 ]

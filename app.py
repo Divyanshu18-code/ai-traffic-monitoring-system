@@ -32,12 +32,24 @@ from typing import Any, Dict, List, Optional
 
 import cv2
 import pandas as pd
+import importlib
 import streamlit as st
+
+import components.charts
+import components.metrics
+import components.sidebar
+import components.video_panel
+
+importlib.reload(components.charts)
+importlib.reload(components.metrics)
+importlib.reload(components.sidebar)
+importlib.reload(components.video_panel)
 
 from components.charts import (
     plot_class_distribution,
     plot_directional_traffic,
     plot_fps_performance,
+    plot_sessions_history,
     plot_traffic_trend,
 )
 from components.metrics import (
@@ -281,7 +293,7 @@ def main():
 
 
 def render_overview_page(db: DatabaseManager):
-    """Render the dashboard overview with aggregate metrics and recent sessions."""
+    """Render the dashboard overview with aggregate metrics, latest session highlight, and recent trends."""
     st.markdown("## 🚦 Traffic Monitoring System Overview")
     st.markdown(
         "<p style='color: #94A3B8; margin-bottom: 24px;'>Real-time AI telemetry, object tracking, bidirectional counts, and vehicle flow audits.</p>",
@@ -289,20 +301,85 @@ def render_overview_page(db: DatabaseManager):
     )
 
     aggregates = db.get_aggregate_metrics()
-    recent_sessions = db.get_recent_sessions(limit=5)
+    recent_sessions = db.get_recent_sessions(limit=8)
+    total_sessions = aggregates.get("total_sessions", 0)
 
-    # Top KPI Metrics Row
+    if total_sessions == 0:
+        st.info(
+            "👋 **Welcome to AI Traffic Monitoring System!**\n\n"
+            "No monitoring sessions have been recorded in the database yet. "
+            "Head over to **📹 Video Analysis** to process a traffic video or **📹 Live Monitoring** to start a live feed."
+        )
+        return
+
+    # Top KPI Metrics Row with accurate labeling
     cols = st.columns(5)
     with cols[0]:
-        render_metric_card("Total Sessions", aggregates.get("total_sessions", 0), "Processed audits", "#3B82F6", "📂")
+        render_metric_card("Total Sessions", total_sessions, "Completed audit sessions", "#3B82F6", "📂")
     with cols[1]:
-        render_metric_card("Total Vehicles", aggregates.get("total_vehicles", 0), "Unique motor vehicles", "#00D26A", "🚗")
+        tot_veh = aggregates.get("total_vehicles", 0)
+        render_metric_card("Monitored Vehicles", tot_veh, "Sum of session observations", "#00D26A", "🚗")
     with cols[2]:
-        render_metric_card("Inbound Count", aggregates.get("total_inbound", 0), "Entering sector", "#10B981", "⬇️")
+        tot_cross = aggregates.get("total_crossings", aggregates.get("total_inbound", 0) + aggregates.get("total_outbound", 0))
+        render_metric_card("Line Crossings", tot_cross, "Total crossing events", "#8B5CF6", "⚡")
     with cols[3]:
-        render_metric_card("Outbound Count", aggregates.get("total_outbound", 0), "Exiting sector", "#F59E0B", "⬆️")
+        in_flow = aggregates.get("total_inbound", 0)
+        out_flow = aggregates.get("total_outbound", 0)
+        render_metric_card("Inbound / Outbound", f"{in_flow} / {out_flow}", "Sector flow balance", "#10B981", "↔️")
     with cols[4]:
-        render_metric_card("System Throughput", f"{aggregates.get('overall_avg_fps', 0.0):.1f} FPS", "Mean inference rate", "#06B6D4", "⚡")
+        fps = aggregates.get("overall_avg_fps", 0.0)
+        render_metric_card("System Throughput", f"{fps:.1f} FPS", "Mean inference rate", "#06B6D4", "🚀")
+
+    # Latest Session Highlight Card
+    latest_sess = recent_sessions[0] if recent_sessions else None
+    if latest_sess:
+        st.markdown(
+            f"""
+            <div style="
+                background: linear-gradient(135deg, rgba(30, 41, 59, 0.7), rgba(15, 23, 42, 0.85));
+                border: 1px solid rgba(59, 130, 246, 0.3);
+                border-left: 4px solid #3B82F6;
+                border-radius: 8px;
+                padding: 14px 20px;
+                margin-bottom: 20px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                flex-wrap: wrap;
+                gap: 12px;
+            ">
+                <div>
+                    <div style="font-size: 0.75rem; color: #94A3B8; text-transform: uppercase; font-weight: 700;">LATEST COMPLETED SESSION</div>
+                    <div style="font-size: 1.05rem; font-weight: 700; color: #F8FAFC;">
+                        {latest_sess.get('source_name', 'Unnamed Feed')}
+                        <span style="font-size: 0.8rem; font-family: monospace; color: #38BDF8; margin-left: 8px;">({latest_sess.get('session_id', '—')})</span>
+                    </div>
+                    <div style="font-size: 0.8rem; color: #64748B; margin-top: 2px;">
+                        Recorded: {latest_sess.get('start_time', '—')} | Runtime: {latest_sess.get('duration_sec', 0.0):.1f}s | Status: <span style="color: #10B981; font-weight: 600;">{latest_sess.get('status', 'completed').upper()}</span>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 20px;">
+                    <div style="text-align: center;">
+                        <div style="font-size: 0.75rem; color: #94A3B8;">VEHICLES</div>
+                        <div style="font-size: 1.2rem; font-weight: 700; color: #00D26A;">{latest_sess.get('total_vehicles', 0)}</div>
+                    </div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 0.75rem; color: #94A3B8;">INBOUND</div>
+                        <div style="font-size: 1.2rem; font-weight: 700; color: #3B82F6;">{latest_sess.get('inbound_count', 0)}</div>
+                    </div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 0.75rem; color: #94A3B8;">OUTBOUND</div>
+                        <div style="font-size: 1.2rem; font-weight: 700; color: #F59E0B;">{latest_sess.get('outbound_count', 0)}</div>
+                    </div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 0.75rem; color: #94A3B8;">AVG FPS</div>
+                        <div style="font-size: 1.2rem; font-weight: 700; color: #06B6D4;">{latest_sess.get('avg_fps', 0.0):.1f}</div>
+                    </div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     st.markdown("---")
 
@@ -323,19 +400,21 @@ def render_overview_page(db: DatabaseManager):
 
     with chart_cols[1]:
         st.markdown("#### Directional Balance")
-        in_flow = aggregates.get("total_inbound", 0)
-        out_flow = aggregates.get("total_outbound", 0)
         fig_flow = plot_directional_traffic(in_flow, out_flow)
         st.pyplot(fig_flow, use_container_width=True)
+
+    # Multi-session flow comparison chart if multiple sessions
+    if len(recent_sessions) > 1:
+        st.markdown("#### Historical Sessions Flow Comparison")
+        fig_hist = plot_sessions_history(recent_sessions)
+        if fig_hist:
+            st.pyplot(fig_hist, use_container_width=True)
 
     st.markdown("---")
 
     # Recent Sessions Table
     st.markdown("#### Recent Processing Sessions")
-    if recent_sessions:
-        render_sessions_html_table(recent_sessions)
-    else:
-        st.info("No recorded processing sessions yet. Head to 'Video Analysis' or 'Live Monitoring' to run a session.")
+    render_sessions_html_table(recent_sessions)
 
 
 def render_live_monitoring_page(
@@ -377,6 +456,19 @@ def render_live_monitoring_page(
 
         with stream_cols[2]:
             save_live_output = st.checkbox("Save Live Video", value=False, help="Record annotated output video to disk")
+            max_frames_choice = st.selectbox(
+                "Demo Frame Limit",
+                options=["Continuous (Manual Stop)", "150 frames (~5-10s)", "300 frames (~15s)", "600 frames (~30s)"],
+                index=0,
+                help="Set a bounded frame limit suitable for quick demonstration or continuous live monitoring",
+            )
+
+    limit_map = {
+        "150 frames (~5-10s)": 150,
+        "300 frames (~15s)": 300,
+        "600 frames (~30s)": 600,
+    }
+    max_frames_limit = limit_map.get(max_frames_choice, None)
 
     # Control buttons
     btn_cols = st.columns([1, 1, 3])
@@ -427,7 +519,11 @@ def render_live_monitoring_page(
     )
     ok, msg = vp.open()
     if not ok:
-        st.error(f"Failed to start camera feed: {msg}")
+        st.error(f"⚠️ Unable to open camera feed: {msg}")
+        st.info(
+            "💡 **Hardware Note**: If this system does not have an active physical webcam or live CCTV stream, "
+            "you can use the **🎬 Video Analysis** page to test real traffic feeds with detection, tracking, and vehicle counting."
+        )
         st.session_state["is_monitoring"] = False
         return
 
@@ -445,6 +541,10 @@ def render_live_monitoring_page(
         for frame_idx, frame in vp.frame_generator(stop_check=lambda: not st.session_state.get("is_monitoring", False)):
             t_start = time.time()
             frame_count += 1
+
+            if max_frames_limit and frame_count >= max_frames_limit:
+                st.info(f"Target frame limit reached ({max_frames_limit} frames). Live monitoring session completed.")
+                break
 
             # 1. ByteTrack Object Tracking
             tracks = tracker.track(frame)
@@ -633,17 +733,25 @@ def render_video_analysis_page(
     with cfg_cols[2]:
         frame_skip = st.number_input("Process Every Nth Frame", min_value=1, max_value=5, value=1) - 1
 
-    if st.button("🚀 Start Video Analysis", type="primary"):
-        process_video_file(
-            video_path=selected_video_path,
-            original_filename=original_name,
-            detector=detector,
-            db=db,
-            line_ratio=line_ratio,
-            save_annotated=save_annotated,
-            show_preview=show_live_preview,
-            frame_skip=int(frame_skip),
-        )
+    is_proc = st.session_state.get("is_processing", False)
+    if is_proc:
+        st.warning("⏳ Video processing is currently in progress. Please wait for completion.")
+    else:
+        if st.button("🚀 Start Video Analysis", type="primary", key="btn_start_video_analysis"):
+            st.session_state["is_processing"] = True
+            try:
+                process_video_file(
+                    video_path=selected_video_path,
+                    original_filename=original_name,
+                    detector=detector,
+                    db=db,
+                    line_ratio=line_ratio,
+                    save_annotated=save_annotated,
+                    show_preview=show_live_preview,
+                    frame_skip=int(frame_skip),
+                )
+            finally:
+                st.session_state["is_processing"] = False
 
 
 def process_video_file(
@@ -771,9 +879,14 @@ def process_video_file(
     with res_cols[1]:
         st.pyplot(plot_directional_traffic(summary["inbound_count"], summary["outbound_count"]), use_container_width=True)
 
-    # Downloads & Exports (Phase 9)
+    # In-browser Video Playback
+    if vp.output_path and vp.output_path.exists() and vp.output_path.stat().st_size > 0:
+        st.markdown("### 🎬 Processed Video Playback")
+        st.video(str(vp.output_path))
+
+    # Downloads & Exports
     st.markdown("### 📥 Export Reports & Video")
-    dl_cols = st.columns(2)
+    dl_cols = st.columns(3)
 
     with dl_cols[0]:
         # Export Session Summary CSV
@@ -787,6 +900,7 @@ def process_video_file(
             "trucks": [counter.state.class_counts.get("truck", 0)],
             "motorcycles": [counter.state.class_counts.get("motorcycle", 0)],
             "pedestrians": [summary["total_unique_pedestrians"]],
+            "total_crossings": [summary["total_line_crossings"]],
             "inbound_count": [summary["inbound_count"]],
             "outbound_count": [summary["outbound_count"]],
             "average_fps": [summary["average_fps"]],
@@ -814,6 +928,11 @@ def process_video_file(
             )
         else:
             st.info("No output video file generated.")
+
+    with dl_cols[2]:
+        if st.button("🔄 Process Another Video", key="btn_reset_analysis"):
+            st.session_state["is_processing"] = False
+            st.rerun()
 
 
 def render_analytics_page(db: DatabaseManager):
@@ -843,6 +962,11 @@ def render_analytics_page(db: DatabaseManager):
     if session:
         st.markdown(f"### Session Details: `{selected_sess_id}`")
         render_summary_kpis(session)
+
+        st.caption(
+            "ℹ️ Note: Congestion classification is an operational heuristic estimated from instantaneous vehicle presence "
+            "and bounding-box area density, not a validated physical traffic simulation."
+        )
 
         st.markdown("---")
         chart_cols = st.columns(2)
@@ -878,7 +1002,7 @@ def render_analytics_page(db: DatabaseManager):
 
 
 def render_history_page(db: DatabaseManager):
-    """Render historical session search, filters, and full CSV export."""
+    """Render historical session search, filters, detailed inspection, and full CSV export."""
     st.markdown("## 📜 Processing History & Audits")
     st.markdown(
         "<p style='color: #94A3B8;'>Filter, search, inspect, and export all recorded traffic monitoring sessions.</p>",
@@ -920,7 +1044,35 @@ def render_history_page(db: DatabaseManager):
 
     if sessions:
         render_sessions_html_table(sessions)
-        with st.expander("🔍 Interactive Data Table & Raw Columns", expanded=False):
+
+        # Detailed Session Drill-down Inspector
+        st.markdown("### 🔎 Inspect Individual Session Records")
+        inspect_opts = {s["session_id"]: f"{s['session_id']} | {s.get('source_name', 'Unnamed')} | {s.get('start_time', '')}" for s in sessions}
+        chosen_sid = st.selectbox(
+            "Select Session to Inspect:",
+            options=list(inspect_opts.keys()),
+            format_func=lambda sid: inspect_opts[sid],
+            key="history_inspect_session_select",
+        )
+        sel_sess = db.get_session(chosen_sid)
+        if sel_sess:
+            render_summary_kpis(sel_sess)
+
+            # Export individual session CSV button
+            sess_df = pd.DataFrame([sel_sess])
+            st.download_button(
+                label=f"📄 Download Details for {chosen_sid} (CSV)",
+                data=sess_df.to_csv(index=False),
+                file_name=f"session_{chosen_sid}.csv",
+                mime="text/csv",
+            )
+
+            snaps = db.get_snapshots_for_session(chosen_sid)
+            if snaps:
+                with st.expander(f"View {len(snaps)} Temporal Snapshots for {chosen_sid}", expanded=False):
+                    st.dataframe(pd.DataFrame(snaps), use_container_width=True, hide_index=True)
+
+        with st.expander("🔍 Interactive Raw Sessions Table", expanded=False):
             df = pd.DataFrame(sessions)
             st.dataframe(df, use_container_width=True, hide_index=True)
     else:
@@ -931,7 +1083,7 @@ def render_settings_page(db: DatabaseManager):
     """Render system configuration, hardware status, and database diagnostics."""
     st.markdown("## ⚙️ System Settings & Diagnostics")
     st.markdown(
-        "<p style='color: #94A3B8;'>Configure detection parameters, model weights, and inspect database state.</p>",
+        "<p style='color: #94A3B8;'>Configure detection parameters, counting line positions, model weights, and inspect database state.</p>",
         unsafe_allow_html=True,
     )
 
@@ -952,6 +1104,19 @@ def render_settings_page(db: DatabaseManager):
             0.10, 0.90, config.confidence_threshold, 0.05
         )
         iou_slider = st.slider("IoU NMS Threshold", 0.10, 0.90, config.iou_threshold, 0.05)
+
+        st.markdown("### Virtual Counting Line Settings")
+        st.slider(
+            "Default Virtual Line Ratio",
+            0.15, 0.85, config.default_line_ratio, 0.05,
+            key="settings_line_ratio",
+            help="Vertical placement ratio of virtual line relative to frame height (0.0=top, 1.0=bottom)",
+        )
+        st.number_input(
+            "Counting Band Buffer Offset (Pixels)",
+            min_value=5, max_value=50, value=config.counting_line_offset_pixels, step=5,
+            help="Detection buffer pixel band for crossing boundary evaluation",
+        )
 
         st.markdown("### Congestion Classification Heuristics")
         low_t = st.number_input("Low Threshold (Active Vehicles)", min_value=1, max_value=20, value=config.congestion_low_threshold)

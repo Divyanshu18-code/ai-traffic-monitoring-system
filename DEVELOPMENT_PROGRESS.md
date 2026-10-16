@@ -274,5 +274,51 @@ print('Recent Sessions:', [s['session_id'] for s in db.get_recent_sessions(3)])
 - **SQLite Concurrency**: SQLite employs database-level file locks for write transactions. Under high multi-threaded concurrency, operations queue up to `busy_timeout = 10000ms`.
 - **Large Video Blobs**: Video files are saved to disk (`data/processed/`), not stored as BLOBs in the SQLite database, preserving database speed and low memory footprint.
 
+---
+
+### Phase 6: Streamlit Dashboard and Full Application Integration Guide & Verification
+
+#### 1. Architecture & Module Overview (`app.py`, `components/`)
+- **Technology Stack**: Streamlit, Matplotlib, OpenCV, PyTorch, YOLOv8, ByteTrack, SQLite3.
+- **Theme & Aesthetics**: Custom glassmorphic dark theme (`#0B0F19` background, `#101522` sidebar, modern typography using Plus Jakarta Sans & JetBrains Mono).
+- **Singletons & Dynamic Hot-Reloading**:
+  - `@st.cache_resource` for singleton `DatabaseManager` and `YOLODetector` weights caching.
+  - `importlib.reload` ensures component edits are picked up without requiring server restarts.
+- **Six Functional Core Pages**:
+  1. **Overview Page**: Real-time KPI summary cards, latest completed session highlight box, vehicle category distribution chart, directional flow balance chart, multi-session comparison chart, and recent processing sessions table.
+  2. **Live Monitoring Page**: Camera stream configuration (webcam / IP CCTV), Start & Stop monitoring controls, safe inactive state by default, bounded frame limit selector (150/300/600 frames demo or continuous), live FPS and counts, dynamic congestion badge, and safe resource cleanup (`vp.close()`).
+  3. **Video Analysis Page**: Upload traffic video (MP4/AVI/MOV/MKV) or select preloaded traffic feeds (`sample_traffic_feed.mp4`, `multi_traffic_sample.mp4`), automated file integrity probing, interactive confidence and line ratio adjustments, duplicate job prevention, live frame-by-frame preview, in-browser video playback player (`st.video`), and CSV/MP4 download buttons.
+  4. **Traffic Analytics Page**: Deep historical analytics with session dropdown selector, KPI summary cards, vehicle category breakdown, directional flow balance, temporal traffic activity trend over frames, and throughput FPS chart.
+  5. **History & Audits Page**: Interactive session search filter by text, source type, and date range; high-contrast sessions table; detailed individual session inspector with snapshot drill-down; and full database CSV export (`traffic_monitoring_sessions_export.csv`).
+  6. **Settings & Diagnostics Page**: YOLO model weights selector (`yolov8n.pt`, `yolov8s.pt`, `yolov8m.pt`), confidence and IoU sliders, virtual counting line ratio and offset band configuration, congestion classification heuristics, hardware execution status (CPU/CUDA GPU), database file size, and database integrity verifier.
+
+#### 2. Running Automated Tests
+Execute the 9 dedicated Phase 6 dashboard unit tests:
+```powershell
+.\venv\Scripts\pytest.exe tests/test_dashboard.py -v
+```
+
+Execute the entire project test suite (all 78 automated tests):
+```powershell
+python -m pytest -q
+```
+
+#### 3. Starting the Dashboard
+```powershell
+.\venv\Scripts\Activate.ps1
+streamlit run app.py
+```
+Dashboard URL: `http://localhost:8501`
+
+#### 4. Browser Verification Summary
+All 6 pages were thoroughly tested and verified via automated browser testing:
+- **Overview**: Verified titles, 5 KPI cards, latest completed session card, matplotlib charts, and recent sessions table.
+- **Live Monitoring**: Verified webcam/IP stream controls, demo frame limits, and inactive placeholder.
+- **Video Analysis**: Verified preloaded sample selection, video property metrics, live inference progress, video player, and downloads.
+- **Traffic Analytics**: Verified session dropdown, congestion classification disclaimer, and temporal charts.
+- **History & Audits**: Verified search filters, sessions table, individual session inspector, and CSV export.
+- **Settings**: Verified detection settings, counting line parameters, hardware diagnostics, and database integrity check.
+
+
 
 

@@ -157,3 +157,49 @@ def plot_fps_performance(snapshots: List[Any]) -> Optional[plt.Figure]:
 
     fig.tight_layout()
     return fig
+
+
+def plot_sessions_history(sessions: List[Dict[str, Any]]) -> Optional[plt.Figure]:
+    """
+    Plot total vehicles and directional flow across recent processing sessions.
+    """
+    if not sessions:
+        return None
+
+    # Filter to sessions with valid data and take up to the 8 most recent
+    valid_sessions = [s for s in sessions if s.get("total_vehicles", 0) > 0 or s.get("inbound_count", 0) > 0 or s.get("outbound_count", 0) > 0]
+    if not valid_sessions:
+        valid_sessions = sessions[:8]
+    else:
+        valid_sessions = valid_sessions[:8]
+
+    # Chronological left to right
+    valid_sessions = list(reversed(valid_sessions))
+
+    labels = [
+        (s.get("source_name") or s.get("session_id", ""))[:14]
+        for s in valid_sessions
+    ]
+    inbounds = [s.get("inbound_count", 0) for s in valid_sessions]
+    outbounds = [s.get("outbound_count", 0) for s in valid_sessions]
+
+    fig, ax = plt.subplots(figsize=(8, 3.2), dpi=100)
+    _apply_dark_style(fig, ax)
+
+    x = np.arange(len(labels))
+    width = 0.35
+
+    ax.bar(x - width / 2, inbounds, width, label="Inbound Flow", color="#3B82F6", edgecolor="#334155")
+    ax.bar(x + width / 2, outbounds, width, label="Outbound Flow", color="#F59E0B", edgecolor="#334155")
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, rotation=20, ha="right", fontsize=8)
+    ax.set_ylabel("Line Crossings", fontsize=9)
+    ax.set_title("Recent Sessions Flow Comparison", fontsize=10, fontweight="bold", pad=10)
+
+    legend = ax.legend(loc="upper left", facecolor="#1B212D", edgecolor="#334155", fontsize=8)
+    for text in legend.get_texts():
+        text.set_color("#CBD5E1")
+
+    fig.tight_layout()
+    return fig
