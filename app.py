@@ -474,6 +474,11 @@ def render_live_monitoring_page(
 
         with stream_cols[2]:
             save_live_output = st.checkbox("Save Live Video", value=False, help="Record annotated output video to disk")
+            detect_all_objects = st.checkbox(
+                "Detect Everything (All Classes)",
+                value=True,
+                help="Detect all 80 COCO classes (person, cell phone, laptop, bottle, chair, cup, etc.) in the live camera feed.",
+            )
             max_frames_choice = st.selectbox(
                 "Demo Frame Limit",
                 options=["Continuous (Manual Stop)", "150 frames (~5-10s)", "300 frames (~15s)", "600 frames (~30s)"],
@@ -507,7 +512,7 @@ def render_live_monitoring_page(
     # Layout for live preview and real-time statistics
     layout_cols = st.columns([3, 2])
     frame_placeholder = layout_cols[0].empty()
-    stats_container = layout_cols[1].container()
+    stats_placeholder = layout_cols[1].empty()
 
     if not st.session_state["is_monitoring"]:
         frame_placeholder.markdown(
@@ -546,7 +551,6 @@ def render_live_monitoring_page(
         return
 
     tracker = ByteTracker(detector)
-    counter = VehicleCounter(line_ratio=line_ratio)
     analyzer = TrafficAnalyzer()
 
     session_id = f"live_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:4]}"
@@ -564,77 +568,62 @@ def render_live_monitoring_page(
                 st.info(f"Target frame limit reached ({max_frames_limit} frames). Live monitoring session completed.")
                 break
 
-            # 1. ByteTrack Object Tracking
-            tracks = tracker.track(frame)
+            # 1. ByteTrack Object Tracking (detect all 80 COCO classes if enabled)
+            tracks = tracker.track(frame, track_all=detect_all_objects)
 
-            # 2. Line Crossing & Counting
-            counting_state = counter.process_frame(tracks, frame_shape=frame.shape[:2])
+            # 2. Extract detected class counts
+            active_class_counts: Dict[str, int] = {}
+            for t in tracks:
+                cname = t.class_name.capitalize()
+                active_class_counts[cname] = active_class_counts.get(cname, 0) + 1
 
-            # 3. Analytics & Congestion
             t_elapsed = max(0.001, time.time() - t_start)
-            snapshot = analyzer.record_frame(
-                frame_idx, tracks, counting_state, frame.shape[:2], t_elapsed
-            )
+            current_fps = 1.0 / t_elapsed
 
-            # Periodic snapshot to SQLite (every 30 frames)
-            if frame_count % 30 == 0:
-                try:
-                    db.save_snapshot(
-                        session_id=session_id,
-                        frame_number=frame_idx,
-                        active_vehicles=snapshot.active_vehicles,
-                        congestion_level=snapshot.congestion_level,
-                        cumulative_inbound=snapshot.cumulative_inbound,
-                        cumulative_outbound=snapshot.cumulative_outbound,
-                        current_fps=snapshot.current_fps,
-                    )
-                except Exception as snap_err:
-                    logger.warning("Live snapshot save non-critical error: %s", snap_err)
-
-            # 4. Draw Overlays
+            # 3. Clean Draw Overlays - Pure object detection without counting line
             annotated = tracker.draw_tracks(frame, tracks, show_trails=True)
-            annotated = counter.draw_counting_overlay(annotated, show_line=True, show_hud=True)
 
-            # 5. Write to output video if recording enabled
+            # 4. Write to output video if recording enabled
             if save_live_output:
                 vp.write_processed_frame(annotated)
 
-            # 6. Render live frame
+            # 5. Render live frame
             render_video_preview(frame_placeholder, annotated)
 
-            # 7. Render dynamic stats
-            with stats_container:
-                st.markdown(f"**Session**: `{session_id}`")
-                render_congestion_badge(snapshot.congestion_level)
+            # 6. Render dynamic stats cleanly without duplicate cards
+            with stats_placeholder.container():
+                st.markdown(f"**Live Feed**: `{source_label}` | **Session**: `{session_id}`")
+                st.markdown("<span style='background:#10B98122;color:#10B981;border:1px solid #10B98144;padding:4px 12px;border-radius:20px;font-size:0.85rem;font-weight:600;'>🟢 LIVE MONITORING ACTIVE</span>", unsafe_allow_html=True)
 
                 st.markdown("---")
                 stat_cols = st.columns(2)
                 with stat_cols[0]:
-                    render_metric_card("Inbound", counting_state.total_inbound, "Entering sector", "#3B82F6", "⬇️")
-                    render_metric_card("Active Cars", counting_state.class_counts.get("car", 0), "Currently tracked", "#00D26A", "🚗")
+                    render_metric_card("Total Objects", len(tracks), "Visible in camera", "#3B82F6", "🎯")
+                    render_metric_card("Persons", active_class_counts.get("Person", 0), "People in view", "#00D26A", "👤")
                 with stat_cols[1]:
-                    render_metric_card("Outbound", counting_state.total_outbound, "Exiting sector", "#F59E0B", "⬆️")
-                    render_metric_card("Live FPS", f"{snapshot.current_fps:.1f}", "Processing rate", "#06B6D4", "⚡")
+                    render_metric_card("Categories", len(active_class_counts), "Unique classes", "#F59E0B", "🏷️")
+                    render_metric_card("Live FPS", f"{current_fps:.1f}", "Processing rate", "#06B6D4", "⚡")
+
+                st.markdown("##### 🔍 Detected In Camera")
+                if active_class_counts:
+                    badges_html = " ".join([
+                        f"<span style='display:inline-block;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.2);padding:5px 12px;border-radius:8px;margin:3px;font-size:0.88rem;font-weight:600;color:#F8FAFC;'>{c}: <b style='color:#38BDF8;'>{cnt}</b></span>"
+                        for c, cnt in sorted(active_class_counts.items(), key=lambda x: x[1], reverse=True)
+                    ])
+                    st.markdown(badges_html, unsafe_allow_html=True)
+                else:
+                    st.caption("No objects currently detected in camera frame.")
 
     finally:
         vp.close()
         try:
-            summary = analyzer.get_analytics_summary(counter.state)
             db.finalize_session(
                 session_id=session_id,
-                duration_sec=summary["session_duration_sec"],
-                total_vehicles=summary["total_unique_vehicles"],
-                cars=counter.state.class_counts.get("car", 0),
-                buses=counter.state.class_counts.get("bus", 0),
-                trucks=counter.state.class_counts.get("truck", 0),
-                motorcycles=counter.state.class_counts.get("motorcycle", 0),
-                pedestrians=summary["total_unique_pedestrians"],
-                inbound_count=summary["inbound_count"],
-                outbound_count=summary["outbound_count"],
-                avg_fps=summary["average_fps"],
-                output_video_path=str(vp.output_path) if vp.output_path else None,
+                duration_sec=0.0,
+                total_vehicles=len(tracks) if 'tracks' in locals() else 0,
+                status="completed",
             )
-            st.info("Live monitoring stopped. Session statistics recorded in database.")
+            st.info("Live monitoring stopped. Session recorded in database.")
         except Exception as fin_err:
             logger.warning("Could not finalize live session in database: %s", fin_err)
 

@@ -179,12 +179,14 @@ class YOLODetector:
         """Check if detector is ready for inference."""
         return self.model is not None
 
-    def detect(self, frame: np.ndarray) -> List[Detection]:
+    def detect(self, frame: np.ndarray, detect_all: bool = False) -> List[Detection]:
         """
         Run object detection on an individual video frame.
 
         Args:
             frame: BGR numpy image frame.
+            detect_all: If True, detects all 80 COCO classes (e.g. for general webcam vision).
+                       If False, filters strictly to traffic classes.
 
         Returns:
             List of structured Detection objects.
@@ -197,7 +199,7 @@ class YOLODetector:
             logger.warning("Invalid or empty input frame provided to detector.")
             return []
 
-        target_class_ids = list(self.target_classes.keys())
+        target_class_ids = None if detect_all else list(self.target_classes.keys())
 
         try:
             results = self.model.predict(
@@ -230,11 +232,13 @@ class YOLODetector:
             else [None] * len(boxes)
         )
 
+        model_names = self.model.names if hasattr(self.model, "names") else {}
+
         for bbox, conf, cls_id, tid in zip(boxes, confidences, class_ids, track_ids):
             x1, y1, x2, y2 = bbox
             cx = int((x1 + x2) / 2)
             cy = int((y1 + y2) / 2)
-            cls_name = self.target_classes.get(cls_id, f"class_{cls_id}")
+            cls_name = self.target_classes.get(cls_id, model_names.get(cls_id, f"class_{cls_id}"))
 
             detection = Detection(
                 class_id=int(cls_id),
@@ -277,6 +281,18 @@ class YOLODetector:
 
         h, w = output.shape[:2]
 
+        palette = [
+            (0, 210, 106),   # green
+            (59, 130, 246),  # blue
+            (245, 158, 11),  # orange
+            (139, 92, 246),  # purple
+            (236, 72, 153),  # pink
+            (20, 184, 166),  # teal
+            (244, 63, 94),   # red
+            (6, 182, 212),   # cyan
+            (234, 179, 8),   # yellow
+        ]
+
         for det in detections:
             x1, y1, x2, y2 = det.bbox
             x1 = max(0, min(x1, w - 1))
@@ -286,7 +302,10 @@ class YOLODetector:
             cx = max(0, min(det.center[0], w - 1))
             cy = max(0, min(det.center[1], h - 1))
 
-            color = CLASS_COLORS_BGR.get(det.class_name, (0, 255, 0))
+            if det.class_name in CLASS_COLORS_BGR:
+                color = CLASS_COLORS_BGR[det.class_name]
+            else:
+                color = palette[det.class_id % len(palette)]
 
             # Draw bounding box
             cv2.rectangle(output, (x1, y1), (x2, y2), color, 2)

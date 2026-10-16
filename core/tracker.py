@@ -52,12 +52,13 @@ class ByteTracker:
         # Class memory for tracks (preserves class across momentary misclassifications)
         self.track_classes: Dict[int, str] = {}
 
-    def track(self, frame: np.ndarray) -> List[Detection]:
+    def track(self, frame: np.ndarray, track_all: bool = False) -> List[Detection]:
         """
         Process a video frame and update object tracks.
 
         Args:
             frame: Input BGR frame.
+            track_all: If True, tracks all 80 COCO classes. If False, tracks traffic classes.
 
         Returns:
             List of structured Detection objects with valid track_id.
@@ -70,7 +71,7 @@ class ByteTracker:
             logger.warning("Invalid or empty input frame provided to tracker.")
             return []
 
-        target_class_ids = list(self.detector.target_classes.keys())
+        target_class_ids = None if track_all else list(self.detector.target_classes.keys())
 
         try:
             # Run tracking with persist=True to maintain IDs across frames
@@ -107,11 +108,19 @@ class ByteTracker:
             else [None] * len(boxes)
         )
 
+        model_names = (
+            self.detector.model.names
+            if (self.detector.model is not None and hasattr(self.detector.model, "names"))
+            else {}
+        )
+
         for bbox, conf, cls_id, tid in zip(boxes, confidences, class_ids, track_ids):
             x1, y1, x2, y2 = bbox
             cx = int((x1 + x2) / 2)
             cy = int((y1 + y2) / 2)
-            raw_class_name = self.detector.target_classes.get(cls_id, f"class_{cls_id}")
+            raw_class_name = self.detector.target_classes.get(
+                cls_id, model_names.get(cls_id, f"class_{cls_id}")
+            )
 
             track_id_val = int(tid) if tid is not None else None
 
