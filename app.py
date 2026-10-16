@@ -549,21 +549,32 @@ def render_video_analysis_page(
 
     with tab_sample:
         st.markdown(
-            "Generate a clean synthetic traffic feed with simulated vehicles crossing the virtual line."
+            "Select a preloaded traffic video feed with real vehicles for accurate YOLO object detection and counting."
         )
-        if st.button("Generate & Select Synthetic Sample Feed"):
-            sample_path = SAMPLES_DIR / "sample_traffic_feed.mp4"
-            generate_synthetic_traffic_video(sample_path, width=640, height=480, fps=25, duration_sec=5)
-            st.session_state["sample_selected"] = str(sample_path)
-            st.success(f"Generated sample video at: `{sample_path}`")
+        sample_options = {}
+        real_sample = SAMPLES_DIR / "sample_traffic_feed.mp4"
+        if real_sample.exists():
+            sample_options["🚗 Real Traffic Highway Feed (Recommended - Real Cars & Crossings)"] = real_sample
 
-        if "sample_selected" in st.session_state and Path(st.session_state["sample_selected"]).exists():
-            selected_video_path = Path(st.session_state["sample_selected"])
+        multi_sample = SAMPLES_DIR / "multi_traffic_sample.mp4"
+        if multi_sample.exists():
+            sample_options["🚶 Mixed Traffic Feed (Cars & Pedestrians)"] = multi_sample
+
+        if sample_options:
+            chosen_label = st.radio(
+                "Select Traffic Sample Feed:",
+                list(sample_options.keys()),
+                index=0,
+                key="sample_feed_choice",
+            )
+            selected_video_path = sample_options[chosen_label]
             original_name = selected_video_path.name
-            st.info(f"Selected synthetic feed: `{original_name}`")
+            st.success(f"Selected: **{chosen_label}** (`{original_name}`)")
+        else:
+            st.warning("No preloaded sample videos found in `data/samples/`.")
 
     if selected_video_path is None:
-        st.info("Please upload a video file or generate a synthetic sample feed above to proceed.")
+        st.info("Please upload a video file or select a sample feed above to proceed.")
         return
 
     # Probe and validate selected video
