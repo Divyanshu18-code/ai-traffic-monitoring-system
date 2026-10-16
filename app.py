@@ -60,6 +60,13 @@ from components.metrics import (
 from components.sidebar import render_sidebar
 from components.video_panel import render_video_preview
 from config.settings import DATA_DIR, SAMPLES_DIR, UPLOADS_DIR, get_config
+if "pytest" not in sys.modules:
+    try:
+        import core.tracker
+        importlib.reload(core.tracker)
+    except Exception:
+        pass
+
 from core.detector import YOLODetector
 from core.tracker import ByteTracker
 from core.traffic_analyzer import TrafficAnalyzer
@@ -550,7 +557,17 @@ def render_live_monitoring_page(
         st.session_state["is_monitoring"] = False
         return
 
-    tracker = ByteTracker(detector)
+    if "pytest" not in sys.modules:
+        try:
+            import core.tracker
+            importlib.reload(core.tracker)
+            from core.tracker import ByteTracker as LiveByteTracker
+            tracker = LiveByteTracker(detector)
+        except Exception:
+            tracker = ByteTracker(detector)
+    else:
+        tracker = ByteTracker(detector)
+
     analyzer = TrafficAnalyzer()
 
     session_id = f"live_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:4]}"
@@ -569,7 +586,50 @@ def render_live_monitoring_page(
                 break
 
             # 1. ByteTrack Object Tracking (detect all 80 COCO classes if enabled)
-            tracks = tracker.track(frame, track_all=detect_all_objects)
+            try:
+                tracks = tracker.track(frame, track_all=detect_all_objects)
+            except TypeError:
+                # Direct Ultralytics tracking fallback if in-memory ByteTracker class signature is stale
+                if detect_all_objects and hasattr(tracker.detector, "model") and tracker.detector.model is not None:
+                    try:
+                        results = tracker.detector.model.track(
+                            source=frame,
+                            persist=True,
+                            tracker=tracker.tracker_type,
+                            conf=tracker.detector.confidence,
+                            iou=tracker.detector.iou,
+                            imgsz=tracker.detector.imgsz,
+                            device=tracker.detector.device,
+                            classes=None,
+                            verbose=False,
+                        )
+                        tracks = []
+                        if results and results[0].boxes is not None:
+                            boxes = results[0].boxes.xyxy.cpu().numpy().astype(int)
+                            confidences = results[0].boxes.conf.cpu().numpy()
+                            class_ids = results[0].boxes.cls.cpu().numpy().astype(int)
+                            track_ids = (
+                                results[0].boxes.id.cpu().numpy().astype(int)
+                                if results[0].boxes.id is not None
+                                else [None] * len(boxes)
+                            )
+                            model_names = getattr(tracker.detector.model, "names", {})
+                            from core.detector import Detection
+                            for bbox, conf, cls_id, tid in zip(boxes, confidences, class_ids, track_ids):
+                                cname = model_names.get(int(cls_id), f"class_{cls_id}")
+                                tracks.append(
+                                    Detection(
+                                        class_id=int(cls_id),
+                                        class_name=cname,
+                                        confidence=float(conf),
+                                        bbox=tuple(bbox),
+                                        track_id=int(tid) if tid is not None else None,
+                                    )
+                                )
+                    except Exception:
+                        tracks = tracker.track(frame)
+                else:
+                    tracks = tracker.track(frame)
 
             # 2. Extract detected class counts
             active_class_counts: Dict[str, int] = {}

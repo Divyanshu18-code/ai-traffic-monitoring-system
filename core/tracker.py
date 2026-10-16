@@ -52,7 +52,13 @@ class ByteTracker:
         # Class memory for tracks (preserves class across momentary misclassifications)
         self.track_classes: Dict[int, str] = {}
 
-    def track(self, frame: np.ndarray, track_all: bool = False) -> List[Detection]:
+    def track(
+        self,
+        frame: np.ndarray,
+        track_all: bool = False,
+        *args: Any,
+        **kwargs: Any,
+    ) -> List[Detection]:
         """
         Process a video frame and update object tracks.
 
