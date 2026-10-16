@@ -59,7 +59,7 @@
 - **[x] Task 8.3**: Verified Streamlit server launch and automated end-to-end browser walkthrough.
 - **[x] Task 9.1**: Implemented session CSV export and full database history CSV download.
 - **[x] Task 13.1**: Created `docs/ARCHITECTURE.md`, `docs/SETUP_GUIDE.md`, and `docs/USER_GUIDE.md`.
-- **[x] Task 14.1**: Final integration test suite run: 37/37 tests passed (100% pass rate).
+- **[x] Task 14.1**: Final integration test suite run: 47/47 tests passed (100% pass rate).
 
 ---
 
@@ -83,10 +83,6 @@ Execute the dedicated Phase 2 detector unit tests:
 ```powershell
 .\venv\Scripts\pytest.exe tests/test_detector.py -v
 ```
-To run the full project test suite:
-```powershell
-.\venv\Scripts\pytest.exe -v
-```
 
 #### 3. Standalone Verification in Python
 ```powershell
@@ -105,4 +101,38 @@ detections = detector.detect(blank)
 print('Detections on blank frame:', len(detections))
 "
 ```
+
+---
+
+### Phase 3: Video Processing & Detector Integration Guide & Verification
+
+#### 1. Module Overview (`core/video_processor.py`)
+- **Input Pipeline**: Supports local files, uploaded video files, local webcam devices (DirectShow backend on Windows), and authorized IP/RTSP streams with credential sanitization.
+- **Incremental Extraction**: Reads frames sequentially using OpenCV `VideoCapture` without loading the full video into RAM.
+- **Metadata Probing**: Extracts frame width, height, source FPS, total frame count, and calculated duration.
+- **Detector Integration**:
+  - `process_frame()` runs detection on each frame and renders overlays.
+  - `process_video()` executes an end-to-end processing loop, calculating instantaneous and average FPS, progress percentage, and emitting structured `ProcessingProgress` updates.
+- **Output Video Encoding**:
+  - Encodes annotated frames with `cv2.VideoWriter` using preferred `mp4v` codec (falling back to `avc1` / `XVID`).
+  - Saved outputs are stored in `data/processed/` with unique filenames (e.g., `proc_<name>_<hash>.mp4`).
+  - Validates that the written file exists and is non-empty upon completion.
+- **Resource Management**: Safe release of `VideoCapture` and `VideoWriter` handles in `close()` and Python context manager (`with VideoProcessor(...) as proc:`).
+
+#### 2. Running Automated Tests
+Run Phase 3 video processor unit tests:
+```powershell
+.\venv\Scripts\pytest.exe tests/test_video_processor.py -v
+```
+To run the full project test suite:
+```powershell
+python -m pytest -q
+```
+
+#### 3. Output Location & Known Limitations
+- **Output Directory**: `data/processed/`
+- **Known Limitations**:
+  - On CPU-only systems, YOLO inference averages ~8-12 FPS for 640x480 resolution.
+  - Live webcam and RTSP camera streams have indefinite frame counts (`total_frames = -1`), so progress percentage is not calculable for infinite streams.
+  - Corrupt video streams with missing MOOV atoms or zero decodable frames are safely rejected during input validation.
 

@@ -9,13 +9,15 @@ and resource lifecycle management.
 from __future__ import annotations
 
 import time
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, Generator, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Generator, List, Optional, Tuple, Union
 
 import cv2
 import numpy as np
 
 from config.settings import PROCESSED_DIR, get_config
+from core.detector import Detection, YOLODetector
 from utils.file_utils import generate_unique_filepath
 from utils.logger import sanitize_url, setup_logger
 from utils.validation import (
@@ -27,6 +29,33 @@ from utils.validation import (
 from utils.video_utils import get_best_video_writer
 
 logger = setup_logger("video_processor")
+
+
+@dataclass
+class ProcessingProgress:
+    """Structured progress update emitted during video processing."""
+
+    frame_index: int
+    total_frames: int
+    progress_percent: float
+    elapsed_time: float
+    current_fps: float
+    detections_count: int
+    is_completed: bool = False
+    output_path: Optional[str] = None
+
+
+@dataclass
+class ProcessingResult:
+    """Structured summary of a completed video processing run."""
+
+    success: bool
+    total_frames: int
+    processed_frames: int
+    elapsed_time_sec: float
+    avg_fps: float
+    output_path: Optional[str] = None
+    error_message: Optional[str] = None
 
 
 class VideoProcessor:
@@ -249,6 +278,151 @@ class VideoProcessor:
                 return False
         return False
 
+    def process_frame(
+        self,
+        frame: np.ndarray,
+        detector: YOLODetector,
+        resize_dim: Optional[Tuple[int, int]] = None,
+        show_track_id: bool = False,
+        show_confidence: bool = True,
+    ) -> Tuple[np.ndarray, List[Detection]]:
+        """
+        Process a single video frame with YOLO detection and overlay rendering.
+
+        Args:
+            frame: Input BGR numpy array.
+            detector: Initialized YOLODetector instance.
+            resize_dim: Optional (width, height) to resize frame before detection.
+            show_track_id: Whether to display tracking ID (Phase 4).
+            show_confidence: Whether to display confidence score on label.
+
+        Returns:
+            Tuple of (annotated_frame, list_of_detections).
+        """
+        if frame is None or not isinstance(frame, np.ndarray) or frame.size == 0:
+            return frame, []
+
+        processed = frame
+        if resize_dim is not None and len(resize_dim) == 2:
+            target_w, target_h = resize_dim
+            if target_w > 0 and target_h > 0 and (frame.shape[1] != target_w or frame.shape[0] != target_h):
+                processed = cv2.resize(frame, (target_w, target_h))
+
+        detections = detector.detect(processed)
+        annotated = detector.draw_detections(
+            processed,
+            detections,
+            show_track_id=show_track_id,
+            show_confidence=show_confidence,
+        )
+        return annotated, detections
+
+    def process_video(
+        self,
+        detector: YOLODetector,
+        progress_callback: Optional[Callable[[ProcessingProgress], None]] = None,
+        frame_skip: int = 0,
+        resize_dim: Optional[Tuple[int, int]] = None,
+        stop_check: Optional[Callable[[], bool]] = None,
+    ) -> ProcessingResult:
+        """
+        Run the end-to-end video processing pipeline with detection and optional saving.
+
+        Args:
+            detector: YOLODetector instance.
+            progress_callback: Optional callback receiving ProcessingProgress on each frame.
+            frame_skip: Process every (frame_skip + 1)-th frame.
+            resize_dim: Optional (width, height) resizing target.
+            stop_check: Optional callable that halts processing early if True.
+
+        Returns:
+            ProcessingResult containing summary metrics and output file path.
+        """
+        if not self.is_opened:
+            ok, msg = self.open()
+            if not ok:
+                return ProcessingResult(
+                    success=False,
+                    total_frames=0,
+                    processed_frames=0,
+                    elapsed_time_sec=0.0,
+                    avg_fps=0.0,
+                    output_path=None,
+                    error_message=msg,
+                )
+
+        start_time = time.time()
+        processed_count = 0
+        total_frames = self.total_frames
+
+        try:
+            for frame_idx, frame in self.frame_generator(frame_skip=frame_skip, stop_check=stop_check):
+                frame_start = time.time()
+                annotated, detections = self.process_frame(
+                    frame, detector, resize_dim=resize_dim
+                )
+                processed_count += 1
+
+                if self.save_output:
+                    self.write_processed_frame(annotated)
+
+                now = time.time()
+                elapsed = max(0.001, now - start_time)
+                instant_fps = 1.0 / max(0.001, (now - frame_start))
+
+                progress_pct = (
+                    round((processed_count / total_frames) * 100, 1)
+                    if total_frames > 0
+                    else 0.0
+                )
+
+                if progress_callback:
+                    progress_callback(
+                        ProcessingProgress(
+                            frame_index=frame_idx,
+                            total_frames=total_frames,
+                            progress_percent=min(100.0, progress_pct),
+                            elapsed_time=round(elapsed, 2),
+                            current_fps=round(instant_fps, 1),
+                            detections_count=len(detections),
+                            output_path=str(self.output_path) if self.output_path else None,
+                        )
+                    )
+
+            elapsed_total = max(0.001, time.time() - start_time)
+            avg_fps = processed_count / elapsed_total
+
+            final_out_str = None
+            if self.save_output and self.output_path:
+                self.close()  # Flush writer
+                if self.output_path.exists() and self.output_path.stat().st_size > 0:
+                    final_out_str = str(self.output_path)
+                    logger.info("Processed video saved (%d bytes): %s", self.output_path.stat().st_size, final_out_str)
+                else:
+                    logger.warning("Output video file was not generated or is empty.")
+
+            return ProcessingResult(
+                success=True,
+                total_frames=total_frames,
+                processed_frames=processed_count,
+                elapsed_time_sec=round(elapsed_total, 2),
+                avg_fps=round(avg_fps, 2),
+                output_path=final_out_str,
+            )
+
+        except Exception as e:
+            logger.error("Error during video processing: %s", e)
+            return ProcessingResult(
+                success=False,
+                total_frames=total_frames,
+                processed_frames=processed_count,
+                elapsed_time_sec=round(time.time() - start_time, 2),
+                avg_fps=round(processed_count / max(0.001, time.time() - start_time), 2),
+                error_message=str(e),
+            )
+        finally:
+            self.close()
+
     def close(self) -> None:
         """Cleanly release OpenCV capture and writer resources."""
         if self.cap is not None:
@@ -274,3 +448,4 @@ class VideoProcessor:
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         self.close()
+
