@@ -24,12 +24,16 @@ def render_sidebar() -> Tuple[str, float, float]:
     with st.sidebar:
         st.markdown(
             """
-            <div style="padding: 10px 0 20px 0; text-align: center;">
-                <h2 style="color: #F8FAFC; margin: 0; font-size: 1.35rem; font-weight: 700; letter-spacing: -0.02em;">
+            <div style="padding: 10px 0 16px 0; text-align: center;">
+                <div style="display: inline-flex; align-items: center; justify-content: center; width: 42px; height: 42px; border-radius: 12px; background: rgba(0, 210, 106, 0.12); border: 1px solid rgba(0, 210, 106, 0.3); margin-bottom: 8px; box-shadow: 0 4px 14px rgba(0, 210, 106, 0.2);">
+                    <span style="font-size: 1.35rem;">🚦</span>
+                </div>
+                <h2 style="color: #F8FAFC; margin: 0; font-size: 1.3rem; font-weight: 800; letter-spacing: -0.02em;">
                     AI Traffic Monitor
                 </h2>
-                <div style="font-size: 0.75rem; color: #00D26A; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; margin-top: 4px;">
-                    Real-Time Computer Vision
+                <div style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.72rem; color: #00D26A; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; margin-top: 6px; background: rgba(0, 210, 106, 0.1); padding: 3px 10px; border-radius: 20px; border: 1px solid rgba(0, 210, 106, 0.25);">
+                    <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background-color: #00D26A; box-shadow: 0 0 6px #00D26A;"></span>
+                    Real-Time Vision
                 </div>
             </div>
             """,

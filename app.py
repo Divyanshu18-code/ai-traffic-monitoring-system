@@ -137,17 +137,37 @@ from components.metrics import (
 )
 
 # Custom CSS styling for modern dark charcoal aesthetic
+# Custom CSS styling for modern dark charcoal aesthetic & responsive mobile phone view
 st.markdown(
     """
     <style>
     /* Google Fonts */
-    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap');
 
-    /* Global Typography & Background */
+    /* Global Typography & Smooth Background */
+    html {
+        scroll-behavior: smooth;
+    }
     .stApp {
-        background-color: #0B0F19 !important;
+        background: radial-gradient(circle at 50% 0%, #151D2C 0%, #080C14 75%) !important;
         color: #F8FAFC !important;
         font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif !important;
+    }
+
+    /* Modern Custom Scrollbar */
+    ::-webkit-scrollbar {
+        width: 7px;
+        height: 7px;
+    }
+    ::-webkit-scrollbar-track {
+        background: #080C14;
+    }
+    ::-webkit-scrollbar-thumb {
+        background: #1E293B;
+        border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+        background: #00D26A;
     }
     
     /* Top Header Bar Removal */
@@ -158,15 +178,17 @@ st.markdown(
         visibility: hidden !important;
     }
     .block-container {
-        padding-top: 2rem !important;
+        padding-top: 1.8rem !important;
         padding-bottom: 3rem !important;
         max-width: 1400px !important;
+        transition: padding 0.3s ease;
     }
 
     /* Sidebar Styling */
     section[data-testid="stSidebar"] {
-        background-color: #101522 !important;
+        background-color: #0E131F !important;
         border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
+        box-shadow: 4px 0 24px rgba(0, 0, 0, 0.4) !important;
     }
 
     /* Sidebar Radio Navigation as Modern Tiles */
@@ -178,11 +200,11 @@ st.markdown(
     section[data-testid="stSidebar"] div[data-testid="stRadio"] label {
         background: rgba(255, 255, 255, 0.02) !important;
         border: 1px solid rgba(255, 255, 255, 0.06) !important;
-        border-radius: 8px !important;
+        border-radius: 10px !important;
         padding: 11px 16px !important;
         cursor: pointer !important;
         user-select: none !important;
-        transition: all 0.15s ease !important;
+        transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
         color: #CBD5E1 !important;
         font-weight: 600 !important;
         font-size: 0.92rem !important;
@@ -191,15 +213,16 @@ st.markdown(
     }
     section[data-testid="stSidebar"] div[data-testid="stRadio"] label:hover {
         background: rgba(0, 210, 106, 0.09) !important;
-        border-color: rgba(0, 210, 106, 0.35) !important;
+        border-color: rgba(0, 210, 106, 0.4) !important;
         color: #F8FAFC !important;
-        transform: translateX(3px);
+        transform: translateX(4px);
     }
     section[data-testid="stSidebar"] div[data-testid="stRadio"] label[data-checked="true"] {
         background: linear-gradient(90deg, rgba(0, 210, 106, 0.22), rgba(0, 210, 106, 0.04)) !important;
-        border-left: 3px solid #00D26A !important;
+        border-left: 3.5px solid #00D26A !important;
         border-color: rgba(0, 210, 106, 0.5) !important;
         color: #00D26A !important;
+        box-shadow: 0 4px 16px rgba(0, 210, 106, 0.12) !important;
     }
     /* Visually conceal radio input circle while preserving instant 1-click events */
     section[data-testid="stSidebar"] div[data-testid="stRadio"] label > div:first-child {
@@ -221,51 +244,164 @@ st.markdown(
         letter-spacing: -0.025em;
     }
 
-    /* Inputs, Selects, and Date Picker */
-    input[type="text"], input[type="number"], div[data-baseweb="input"] input, div[data-baseweb="select"] > div {
-        background-color: #151C28 !important;
-        border: 1px solid #2A3649 !important;
-        color: #F8FAFC !important;
-        border-radius: 8px !important;
-    }
-    input[type="text"]:focus, input[type="number"]:focus, div[data-baseweb="select"] > div:focus-within {
-        border-color: #00D26A !important;
-        box-shadow: 0 0 0 2px rgba(0, 210, 106, 0.2) !important;
-    }
-    div[data-baseweb="popover"], div[data-baseweb="calendar"] {
-        background-color: #151C28 !important;
-        color: #F8FAFC !important;
+    /* =========================================================================
+       COMPREHENSIVE DROPDOWN & SELECTBOX STYLING (FIXES ALL STREAMLIT DROPDOWNS)
+       ========================================================================= */
+    div[data-testid="stSelectbox"] label, div[data-testid="stMultiSelect"] label {
+        font-size: 0.88rem !important;
+        font-weight: 600 !important;
+        color: #CBD5E1 !important;
+        margin-bottom: 6px !important;
+        letter-spacing: 0.01em !important;
     }
 
-    /* Glassmorphism panels */
-    div[data-testid="stExpander"], div[data-testid="stForm"] {
-        background-color: #141A26 !important;
-        border: 1px solid rgba(255, 255, 255, 0.07) !important;
+    /* Dropdown Trigger Box */
+    div[data-baseweb="select"] {
         border-radius: 10px !important;
-        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25) !important;
+    }
+    div[data-baseweb="select"] > div {
+        background-color: #121824 !important;
+        border: 1px solid rgba(255, 255, 255, 0.12) !important;
+        border-radius: 10px !important;
+        color: #F8FAFC !important;
+        min-height: 44px !important;
+        padding: 2px 8px !important;
+        transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25) !important;
+        cursor: pointer !important;
+    }
+    div[data-baseweb="select"] > div:hover {
+        border-color: rgba(0, 210, 106, 0.5) !important;
+        background-color: #161F2E !important;
+        box-shadow: 0 4px 14px rgba(0, 210, 106, 0.15) !important;
+        transform: translateY(-1px);
+    }
+    div[data-baseweb="select"] > div:focus-within {
+        border-color: #00D26A !important;
+        box-shadow: 0 0 0 2px rgba(0, 210, 106, 0.25), 0 4px 16px rgba(0, 210, 106, 0.2) !important;
+        background-color: #161F2E !important;
     }
 
-    /* Primary buttons */
+    /* Selected Value Text */
+    div[data-baseweb="select"] span, div[data-baseweb="select"] div[aria-selected="true"] {
+        color: #F8FAFC !important;
+        font-weight: 500 !important;
+        font-size: 0.92rem !important;
+    }
+
+    /* Dropdown Arrow Icon */
+    div[data-baseweb="select"] svg {
+        fill: #00D26A !important;
+        stroke: #00D26A !important;
+        transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    }
+
+    /* Dropdown Menu Popover Container */
+    div[data-baseweb="popover"] {
+        background-color: #111622 !important;
+        border: 1px solid rgba(0, 210, 106, 0.35) !important;
+        border-radius: 12px !important;
+        box-shadow: 0 20px 48px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.05) !important;
+        backdrop-filter: blur(20px) !important;
+        overflow: hidden !important;
+        margin-top: 4px !important;
+        z-index: 999999 !important;
+    }
+    div[data-baseweb="popover"] ul, ul[role="listbox"] {
+        background-color: #111622 !important;
+        padding: 6px !important;
+        border: none !important;
+    }
+    div[data-baseweb="popover"] li, li[role="option"] {
+        background-color: transparent !important;
+        color: #CBD5E1 !important;
+        border-radius: 8px !important;
+        padding: 10px 14px !important;
+        margin-bottom: 3px !important;
+        font-size: 0.9rem !important;
+        font-weight: 500 !important;
+        transition: all 0.15s ease !important;
+        cursor: pointer !important;
+    }
+    li[role="option"]:hover, li[role="option"][aria-selected="true"] {
+        background: rgba(0, 210, 106, 0.16) !important;
+        color: #00F07A !important;
+        font-weight: 600 !important;
+        transform: translateX(4px);
+    }
+
+    /* Regular Text & Number Inputs */
+    input[type="text"], input[type="number"], div[data-baseweb="input"] input {
+        background-color: #121824 !important;
+        border: 1px solid rgba(255, 255, 255, 0.12) !important;
+        color: #F8FAFC !important;
+        border-radius: 10px !important;
+        min-height: 42px !important;
+        padding: 8px 14px !important;
+        transition: all 0.2s ease !important;
+    }
+    input[type="text"]:focus, input[type="number"]:focus {
+        border-color: #00D26A !important;
+        box-shadow: 0 0 0 2px rgba(0, 210, 106, 0.25) !important;
+        background-color: #161F2E !important;
+    }
+
+    /* Modern Glassmorphism Panels & Forms */
+    div[data-testid="stExpander"], div[data-testid="stForm"] {
+        background: linear-gradient(145deg, rgba(20, 26, 38, 0.75), rgba(14, 18, 28, 0.85)) !important;
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        border-radius: 12px !important;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3) !important;
+        backdrop-filter: blur(10px) !important;
+        transition: all 0.25s ease !important;
+    }
+    div[data-testid="stExpander"]:hover {
+        border-color: rgba(0, 210, 106, 0.25) !important;
+        box-shadow: 0 12px 35px rgba(0, 0, 0, 0.4), 0 0 15px rgba(0, 210, 106, 0.06) !important;
+    }
+
+    /* Sleek File Uploader */
+    div[data-testid="stFileUploader"] {
+        background: linear-gradient(135deg, rgba(18, 24, 36, 0.8), rgba(12, 16, 26, 0.9)) !important;
+        border: 2px dashed rgba(0, 210, 106, 0.3) !important;
+        border-radius: 12px !important;
+        padding: 20px !important;
+        transition: all 0.25s ease !important;
+    }
+    div[data-testid="stFileUploader"]:hover {
+        border-color: #00D26A !important;
+        background: rgba(0, 210, 106, 0.04) !important;
+        box-shadow: 0 8px 28px rgba(0, 210, 106, 0.12) !important;
+    }
+
+    /* Primary Glowing CTA Buttons */
     .stButton>button {
         background: linear-gradient(135deg, #00D26A, #00A854) !important;
-        color: #0B0F19 !important;
+        color: #070B12 !important;
         font-weight: 700 !important;
+        font-size: 0.95rem !important;
         border: none !important;
-        border-radius: 8px !important;
-        padding: 9px 20px !important;
-        transition: all 0.2s ease-in-out !important;
+        border-radius: 10px !important;
+        padding: 10px 22px !important;
+        box-shadow: 0 4px 16px rgba(0, 210, 106, 0.25) !important;
+        transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+        letter-spacing: 0.01em !important;
     }
     .stButton>button:hover {
         background: linear-gradient(135deg, #00F07A, #00D26A) !important;
-        box-shadow: 0 4px 18px rgba(0, 210, 106, 0.4) !important;
+        box-shadow: 0 6px 24px rgba(0, 210, 106, 0.45) !important;
         color: #000 !important;
-        transform: translateY(-1px);
+        transform: translateY(-2px);
+    }
+    .stButton>button:active {
+        transform: translateY(0px) scale(0.98);
     }
 
     /* Sliders */
     div[data-testid="stSlider"] div[role="slider"] {
         background-color: #00D26A !important;
         border-color: #00D26A !important;
+        box-shadow: 0 0 10px rgba(0, 210, 106, 0.5) !important;
     }
 
     /* Tabs */
@@ -273,10 +409,79 @@ st.markdown(
         font-size: 0.92rem !important;
         font-weight: 600 !important;
         color: #94A3B8 !important;
+        transition: all 0.2s ease !important;
     }
     button[data-baseweb="tab"][aria-selected="true"] {
         color: #00D26A !important;
         border-bottom-color: #00D26A !important;
+    }
+
+    /* Metric Cards Hover Lift */
+    .custom-metric-card {
+        transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s ease, border-color 0.25s ease !important;
+    }
+    .custom-metric-card:hover {
+        transform: translateY(-3px) !important;
+        box-shadow: 0 14px 32px rgba(0, 0, 0, 0.45), 0 0 20px rgba(0, 210, 106, 0.12) !important;
+    }
+
+    /* =========================================================================
+       RESPONSIVE PHONE / MOBILE VIEW (REAL WEBSITE MOBILE EXPERIENCE)
+       ========================================================================= */
+    @media (max-width: 768px) {
+        .block-container {
+            padding-top: 1rem !important;
+            padding-bottom: 2rem !important;
+            padding-left: 0.8rem !important;
+            padding-right: 0.8rem !important;
+            max-width: 100% !important;
+        }
+
+        /* Stack side-by-side columns into clean full-width cards on phones */
+        div[data-testid="stHorizontalBlock"] {
+            flex-direction: column !important;
+            gap: 12px !important;
+        }
+        div[data-testid="column"] {
+            width: 100% !important;
+            min-width: 100% !important;
+            flex: 1 1 100% !important;
+            margin-bottom: 6px !important;
+        }
+
+        /* Full-width touch friendly buttons */
+        .stButton>button {
+            width: 100% !important;
+            min-height: 48px !important;
+            font-size: 1rem !important;
+            margin-bottom: 8px !important;
+            justify-content: center !important;
+        }
+
+        /* Touch friendly inputs and selects */
+        input[type="text"], input[type="number"], div[data-baseweb="select"] > div {
+            min-height: 48px !important;
+            font-size: 0.95rem !important;
+        }
+
+        /* Mobile Headings Scaling */
+        h1 { font-size: 1.55rem !important; line-height: 1.25 !important; }
+        h2 { font-size: 1.3rem !important; line-height: 1.3 !important; }
+        h3 { font-size: 1.15rem !important; }
+        h4 { font-size: 1rem !important; }
+
+        /* Full width responsive video and images */
+        img, video, div[data-testid="stImage"] img {
+            max-width: 100% !important;
+            height: auto !important;
+            border-radius: 10px !important;
+        }
+
+        /* Sidebar width on mobile */
+        section[data-testid="stSidebar"] {
+            width: 85vw !important;
+            min-width: 280px !important;
+        }
     }
     </style>
     """,
@@ -800,11 +1005,25 @@ def render_video_analysis_page(
     st.markdown("#### Analysis Configuration")
     cfg_cols = st.columns(3)
     with cfg_cols[0]:
-        save_annotated = st.checkbox("Encode & Save Annotated Output Video", value=True)
+        save_annotated = st.checkbox(
+            "Save Annotated Output Video to Disk",
+            value=False,
+            help="Disabled by default: Fast in-memory detection without saving large output video files to disk.",
+        )
     with cfg_cols[1]:
         show_live_preview = st.checkbox("Show Preview During Processing", value=True)
     with cfg_cols[2]:
         frame_skip = st.number_input("Process Every Nth Frame", min_value=1, max_value=5, value=1) - 1
+
+    if not save_annotated:
+        st.markdown(
+            """
+            <div style="background: rgba(0, 210, 106, 0.08); border: 1px solid rgba(0, 210, 106, 0.25); border-radius: 8px; padding: 10px 14px; margin: 10px 0 16px 0; color: #34D399; font-size: 0.88rem; font-weight: 500;">
+                ⚡ <b>Real-Time Fast Detection Mode:</b> Video upload hote hi instant detect & count hoga — output video disk par save nahi hogi (Storage Saved).
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     is_proc = st.session_state.get("is_processing", False)
     if is_proc:
@@ -963,9 +1182,18 @@ def process_video_file(
         st.pyplot(plot_directional_traffic(summary["inbound_count"], summary["outbound_count"]), use_container_width=True)
 
     # In-browser Video Playback
-    if vp.output_path and vp.output_path.exists() and vp.output_path.stat().st_size > 0:
+    if save_annotated and vp.output_path and vp.output_path.exists() and vp.output_path.stat().st_size > 0:
         st.markdown("### 🎬 Processed Video Playback")
         st.video(str(vp.output_path))
+    elif not save_annotated:
+        st.markdown(
+            """
+            <div style="background: rgba(0, 210, 106, 0.08); border: 1px solid rgba(0, 210, 106, 0.25); border-radius: 10px; padding: 14px 18px; margin: 18px 0; color: #34D399; font-size: 0.92rem;">
+                ✅ <b>Live Video Detection & Vehicle Counting Completed:</b> Video was processed and audited in real-time. Output video file was not saved to disk as requested (Storage saved).
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     # Downloads & Exports
     st.markdown("### 📥 Export Reports & Video")
@@ -1000,7 +1228,7 @@ def process_video_file(
 
     with dl_cols[1]:
         # Download Processed Video if exists
-        if vp.output_path and vp.output_path.exists():
+        if save_annotated and vp.output_path and vp.output_path.exists():
             with open(vp.output_path, "rb") as vf:
                 video_bytes = vf.read()
             st.download_button(
@@ -1010,7 +1238,14 @@ def process_video_file(
                 mime="video/mp4",
             )
         else:
-            st.info("No output video file generated.")
+            st.markdown(
+                """
+                <div style="background: rgba(255, 255, 255, 0.02); border: 1px dashed rgba(255, 255, 255, 0.12); border-radius: 8px; padding: 12px; text-align: center; color: #94A3B8; font-size: 0.85rem;">
+                    ⚡ <b>Fast Memory Mode</b><br>Output video disk par save nahi hui.
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
     with dl_cols[2]:
         if st.button("🔄 Process Another Video", key="btn_reset_analysis"):

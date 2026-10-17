@@ -18,15 +18,16 @@ def render_metric_card(
 ) -> None:
     """Render a modern glassmorphic metric card with custom styling."""
     html = f"""
-    <div style="
-        background: linear-gradient(135deg, rgba(30, 36, 48, 0.7), rgba(18, 22, 31, 0.85));
+    <div class="custom-metric-card" style="
+        background: linear-gradient(135deg, rgba(22, 28, 40, 0.78), rgba(13, 17, 25, 0.9));
         border: 1px solid rgba(255, 255, 255, 0.08);
-        border-top: 2px solid {color};
-        border-radius: 10px;
+        border-top: 2.5px solid {color};
+        border-radius: 12px;
         padding: 16px 20px;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
         margin-bottom: 12px;
-        backdrop-filter: blur(8px);
+        backdrop-filter: blur(10px);
+        transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s ease;
     ">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
             <span style="font-size: 0.82rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: #94A3B8;">
