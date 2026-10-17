@@ -160,7 +160,7 @@ class VideoProcessor:
             self.duration_sec = 0.0
 
         elif self.source_type == "ip_camera":
-            stream_url = str(self.source).strip()
+            stream_url = str(self.source).strip().replace(" ", "")
             url_ok, url_msg = validate_stream_url(stream_url)
             if not url_ok:
                 return False, url_msg
@@ -168,9 +168,25 @@ class VideoProcessor:
             sanitized = sanitize_url(stream_url)
             logger.info("Connecting to IP camera stream: %s", sanitized)
 
-            self.cap = cv2.VideoCapture(stream_url)
-            if not self.cap.isOpened():
-                return False, f"Failed to connect to IP camera stream at {sanitized}."
+            # Auto-detect common IP Webcam endpoints (e.g. http://ip:8080 -> /video)
+            candidates = [stream_url]
+            try:
+                from urllib.parse import urlparse
+                parsed_u = urlparse(stream_url)
+                if parsed_u.scheme in ("http", "https") and (not parsed_u.path or parsed_u.path in ("/", "")):
+                    candidates.insert(0, stream_url.rstrip("/") + "/video")
+            except Exception:
+                pass
+
+            opened = False
+            for cand in candidates:
+                self.cap = cv2.VideoCapture(cand)
+                if self.cap.isOpened():
+                    opened = True
+                    break
+
+            if not opened or self.cap is None or not self.cap.isOpened():
+                return False, f"Failed to connect to IP camera stream at {sanitized}. Check that your phone and computer are on the same Wi-Fi network and verify the stream endpoint (e.g. {sanitized}/video)."
 
             self.width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or 640
             self.height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or 480

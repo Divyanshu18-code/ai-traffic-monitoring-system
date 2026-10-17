@@ -700,11 +700,12 @@ def render_live_monitoring_page(
             else:
                 rtsp_url = st.text_input(
                     "Stream URL",
-                    placeholder="rtsp://username:password@192.168.1.50:554/live",
-                    help="Enter authorized RTSP or HTTP video stream. Credentials will be sanitized.",
+                    placeholder="e.g. http://10.176.215.18:8080/video or rtsp://...",
+                    help="For mobile 'IP Webcam' app, use http://IP:PORT/video (e.g. http://10.176.215.18:8080/video)",
                 )
-                source_input = rtsp_url
-                source_label = sanitize_url(rtsp_url)
+                clean_url = rtsp_url.strip().replace(" ", "") if rtsp_url else ""
+                source_input = clean_url
+                source_label = sanitize_url(clean_url)
 
         with stream_cols[2]:
             save_live_output = st.checkbox("Save Live Video", value=False, help="Record annotated output video to disk")

@@ -122,7 +122,7 @@ def validate_stream_url(url: str) -> Tuple[bool, str]:
     if not url or not isinstance(url, str):
         return False, "Stream URL cannot be empty."
 
-    url = url.strip()
+    url = url.strip().replace(" ", "")
     # Check for disallowed schemes or local file traversal
     disallowed = ["file:", "javascript:", "data:", "ftp:"]
     for prefix in disallowed:
