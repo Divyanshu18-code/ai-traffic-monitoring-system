@@ -8,7 +8,7 @@ and support downstream line-crossing calculations.
 
 from __future__ import annotations
 
-from collections import defaultdict, deque
+from collections import Counter, defaultdict, deque
 from typing import Any, Deque, Dict, List, Optional, Tuple
 
 import cv2
@@ -51,6 +51,10 @@ class ByteTracker:
         )
         # Class memory for tracks (preserves class across momentary misclassifications)
         self.track_classes: Dict[int, str] = {}
+        # Rolling majority vote for track class stabilization
+        self.track_class_votes: Dict[int, Deque[str]] = defaultdict(
+            lambda: deque(maxlen=10)
+        )
 
     def track(
         self,
@@ -130,11 +134,13 @@ class ByteTracker:
 
             track_id_val = int(tid) if tid is not None else None
 
-            # Stabilize class assignment using track history if available
+            # Stabilize class assignment using rolling majority vote across recent frames
             if track_id_val is not None:
-                if track_id_val not in self.track_classes:
-                    self.track_classes[track_id_val] = raw_class_name
-                class_name = self.track_classes[track_id_val]
+                self.track_class_votes[track_id_val].append(raw_class_name)
+                # Compute most frequent class in recent frames
+                votes = Counter(self.track_class_votes[track_id_val])
+                class_name = votes.most_common(1)[0][0]
+                self.track_classes[track_id_val] = class_name
                 # Append centroid to trajectory history
                 self.track_history[track_id_val].append((cx, cy))
             else:
@@ -224,6 +230,7 @@ class ByteTracker:
         """
         self.track_history.clear()
         self.track_classes.clear()
+        self.track_class_votes.clear()
         # Reset tracker in Ultralytics model if internal tracker exists
         try:
             if self.detector.model is not None and hasattr(self.detector.model, "predictor"):

@@ -67,7 +67,7 @@ if "pytest" not in sys.modules:
     except Exception:
         pass
 
-from core.detector import YOLODetector
+from core.detector import YOLODetector, resolve_display_label
 from core.tracker import ByteTracker
 from core.traffic_analyzer import TrafficAnalyzer
 from core.vehicle_counter import VehicleCounter
@@ -721,6 +721,34 @@ def render_live_monitoring_page(
                 help="Set a bounded frame limit suitable for quick demonstration or continuous live monitoring",
             )
 
+        model_cols = st.columns([1, 1, 1])
+        with model_cols[0]:
+            live_model_choice = st.selectbox(
+                "AI Model Precision",
+                options=["yolov8s.pt (High Precision - Recommended)", "yolov8n.pt (Nano Fast)"],
+                index=0,
+                help="YOLOv8 Small provides much higher accuracy and better separation of everyday items (books, pens, electronics) compared to Nano.",
+            )
+        with model_cols[1]:
+            live_conf_val = st.slider(
+                "Live Confidence Threshold",
+                min_value=0.25,
+                max_value=0.85,
+                value=float(st.session_state.get("conf_threshold", 0.40)),
+                step=0.05,
+                help="Optimal threshold for webcam: 0.40 - 0.50 eliminates false detections like books mistaken for cups.",
+            )
+        with model_cols[2]:
+            st.markdown(
+                """
+                <div style="background: rgba(0, 210, 106, 0.08); border: 1px solid rgba(0, 210, 106, 0.25); border-radius: 8px; padding: 10px 12px; margin-top: 14px; font-size: 0.8rem; color: #34D399;">
+                    ✨ <b>Real-World Resolver Active:</b><br>
+                    Real-world labeling enabled (Pencil/Pen, Book, Phone) with rolling class stabilization.
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
     limit_map = {
         "150 frames (~5-10s)": 150,
         "300 frames (~15s)": 300,
@@ -767,6 +795,13 @@ def render_live_monitoring_page(
             unsafe_allow_html=True,
         )
         return
+
+    # Resolve requested model and confidence
+    selected_live_model = "yolov8s.pt" if "yolov8s" in live_model_choice else "yolov8n.pt"
+    if detector.model_path != selected_live_model and not str(detector.model_path).endswith(selected_live_model):
+        detector = load_yolo_detector(selected_live_model, live_conf_val, config.device)
+    else:
+        detector.confidence = live_conf_val
 
     # Initialize Live Pipeline
     vp = VideoProcessor(
@@ -859,10 +894,10 @@ def render_live_monitoring_page(
                 else:
                     tracks = tracker.track(frame)
 
-            # 2. Extract detected class counts
+            # 2. Extract detected class counts with real-world display names
             active_class_counts: Dict[str, int] = {}
             for t in tracks:
-                cname = t.class_name.capitalize()
+                cname = resolve_display_label(t.class_name)
                 active_class_counts[cname] = active_class_counts.get(cname, 0) + 1
 
             t_elapsed = max(0.001, time.time() - t_start)

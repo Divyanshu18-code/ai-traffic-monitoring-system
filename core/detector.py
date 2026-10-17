@@ -74,6 +74,20 @@ class Detection:
         return cx, cy
 
 
+# Real-world display names for everyday objects where standard COCO labels differ
+REAL_WORLD_DISPLAY_NAMES: Dict[str, str] = {
+    "toothbrush": "Pencil / Pen",
+}
+
+
+def resolve_display_label(class_name: str) -> str:
+    """Map class label to intuitive real-world name for user interface display."""
+    if not class_name:
+        return ""
+    cleaned = str(class_name).strip().lower()
+    return REAL_WORLD_DISPLAY_NAMES.get(cleaned, class_name.capitalize())
+
+
 class YOLODetector:
     """
     YOLOv8 Object Detector for traffic surveillance and monitoring.
@@ -313,8 +327,9 @@ class YOLODetector:
             # Draw center point
             cv2.circle(output, (cx, cy), 3, color, -1)
 
-            # Prepare label text
-            label_parts = [det.class_name.capitalize()]
+            # Prepare label text with intuitive real-world display name
+            display_name = resolve_display_label(det.class_name)
+            label_parts = [display_name]
             if show_track_id and det.track_id is not None:
                 label_parts.insert(0, f"#{det.track_id}")
             if show_confidence:
