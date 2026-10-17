@@ -676,15 +676,48 @@ class DatabaseManager:
 
     def delete_session(self, session_id: str) -> bool:
         """Delete a session and associated snapshots by session ID."""
-        sql = "DELETE FROM sessions WHERE session_id = ?"
         try:
             with self._get_connection() as conn:
-                cursor = conn.execute(sql, (session_id,))
+                conn.execute("DELETE FROM traffic_snapshots WHERE session_id = ?", (session_id,))
+                cursor = conn.execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
                 conn.commit()
                 return cursor.rowcount > 0
         except Exception as e:
             logger.error("Error deleting session '%s': %s", session_id, e)
             return False
+
+    def clear_all_history(self) -> int:
+        """Delete all recorded sessions and snapshots from database. Returns count of deleted sessions."""
+        try:
+            with self._get_connection() as conn:
+                conn.execute("DELETE FROM traffic_snapshots")
+                cur = conn.execute("DELETE FROM sessions")
+                conn.commit()
+                return cur.rowcount
+        except Exception as e:
+            logger.error("Error clearing all history: %s", e)
+            return 0
+
+    def purge_old_sessions(self, keep_latest: int = 20) -> int:
+        """Keep only the latest N sessions and purge older ones and their snapshots."""
+        try:
+            with self._get_connection() as conn:
+                rows = conn.execute(
+                    "SELECT session_id FROM sessions ORDER BY start_time DESC LIMIT -1 OFFSET ?",
+                    (max(0, keep_latest),),
+                ).fetchall()
+                sids_to_del = [r[0] for r in rows]
+                if not sids_to_del:
+                    return 0
+
+                placeholders = ",".join("?" for _ in sids_to_del)
+                conn.execute(f"DELETE FROM traffic_snapshots WHERE session_id IN ({placeholders})", sids_to_del)
+                cur = conn.execute(f"DELETE FROM sessions WHERE session_id IN ({placeholders})", sids_to_del)
+                conn.commit()
+                return cur.rowcount
+        except Exception as e:
+            logger.error("Error purging old sessions: %s", e)
+            return 0
 
     def __enter__(self) -> DatabaseManager:
         return self

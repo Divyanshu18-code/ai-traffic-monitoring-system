@@ -1369,6 +1369,27 @@ def render_history_page(db: DatabaseManager):
             if query in s.get("session_id", "").lower() or query in s.get("source_name", "").lower()
         ]
 
+    # History Storage & Data Management
+    with st.expander("🧹 Storage & History Cleanup", expanded=False):
+        all_count = len(db.get_all_sessions())
+        m_cols = st.columns([2, 1, 1])
+        with m_cols[0]:
+            st.markdown(f"**Total Database Sessions:** `{all_count}` records")
+            st.caption("Clean up older test sessions to keep your database fast, clean, and organized.")
+        with m_cols[1]:
+            if st.button("🧹 Keep Latest 20 (Clean Older)", help="Deletes older test records while keeping the 20 most recent sessions"):
+                if hasattr(db, "purge_old_sessions"):
+                    deleted = db.purge_old_sessions(keep_latest=20)
+                    st.success(f"Purged {deleted} older sessions!")
+                    st.rerun()
+        with m_cols[2]:
+            confirm_clear = st.checkbox("Confirm Clear All", key="chk_wipe_history")
+            if st.button("🗑️ Clear All History", disabled=not confirm_clear, help="Permanently delete all session history"):
+                if hasattr(db, "clear_all_history"):
+                    del_cnt = db.clear_all_history()
+                    st.warning(f"Cleared all {del_cnt} historical sessions.")
+                    st.rerun()
+
     # Full Export Button (Phase 9)
     export_cols = st.columns([3, 1])
     with export_cols[1]:
@@ -1384,7 +1405,28 @@ def render_history_page(db: DatabaseManager):
             )
 
     if sessions:
-        render_sessions_html_table(sessions)
+        # Paginated Table Rendering
+        page_size = 10
+        total_sessions = len(sessions)
+        if total_sessions > page_size:
+            total_pages = (total_sessions + page_size - 1) // page_size
+            page_cols = st.columns([3, 1])
+            with page_cols[0]:
+                st.markdown(f"<p style='color: #94A3B8; font-size: 0.9rem; margin-top: 6px;'>Showing page <b>{st.session_state.get('curr_hist_page', 1)}</b> of <b>{total_pages}</b> ({total_sessions} total records)</p>", unsafe_allow_html=True)
+            with page_cols[1]:
+                curr_page = st.selectbox(
+                    "Page",
+                    options=list(range(1, total_pages + 1)),
+                    index=0,
+                    key="curr_hist_page",
+                    label_visibility="collapsed",
+                )
+            start_i = (curr_page - 1) * page_size
+            end_i = min(total_sessions, start_i + page_size)
+            page_sessions = sessions[start_i:end_i]
+            render_sessions_html_table(page_sessions)
+        else:
+            render_sessions_html_table(sessions)
 
         # Detailed Session Drill-down Inspector
         st.markdown("### 🔎 Inspect Individual Session Records")
@@ -1399,14 +1441,24 @@ def render_history_page(db: DatabaseManager):
         if sel_sess:
             render_summary_kpis(sel_sess)
 
-            # Export individual session CSV button
-            sess_df = pd.DataFrame([sel_sess])
-            st.download_button(
-                label=f"📄 Download Details for {chosen_sid} (CSV)",
-                data=sess_df.to_csv(index=False),
-                file_name=f"session_{chosen_sid}.csv",
-                mime="text/csv",
-            )
+            # Export & Delete Actions
+            action_cols = st.columns([2, 1])
+            with action_cols[0]:
+                sess_df = pd.DataFrame([sel_sess])
+                st.download_button(
+                    label=f"📄 Download Details for {chosen_sid} (CSV)",
+                    data=sess_df.to_csv(index=False),
+                    file_name=f"session_{chosen_sid}.csv",
+                    mime="text/csv",
+                )
+            with action_cols[1]:
+                if st.button(f"🗑️ Delete Session Record", key=f"del_single_{chosen_sid}", type="secondary"):
+                    ok = db.delete_session(chosen_sid)
+                    if ok:
+                        st.success(f"Session {chosen_sid} deleted!")
+                        st.rerun()
+                    else:
+                        st.error("Could not delete session.")
 
             snaps = db.get_snapshots_for_session(chosen_sid)
             if snaps:
