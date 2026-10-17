@@ -287,6 +287,28 @@ st.markdown(
         color: #F8FAFC !important;
         font-weight: 500 !important;
         font-size: 0.92rem !important;
+        user-select: none !important;
+    }
+
+    /* Completely Remove Blinking Text Caret / Cursor Line from all Dropdowns */
+    div[data-testid="stSelectbox"] input,
+    div[data-testid="stMultiSelect"] input,
+    div[data-baseweb="select"] input,
+    div[data-baseweb="select"] input[role="combobox"],
+    input[aria-autocomplete="list"],
+    div[data-baseweb="select"] input:focus,
+    div[data-testid="stSelectbox"] input:focus {
+        caret-color: transparent !important;
+        cursor: pointer !important;
+        user-select: none !important;
+        -webkit-user-select: none !important;
+        outline: none !important;
+        box-shadow: none !important;
+    }
+
+    div[data-testid="stSelectbox"] *,
+    div[data-baseweb="select"] * {
+        cursor: pointer !important;
     }
 
     /* Dropdown Arrow Icon */
