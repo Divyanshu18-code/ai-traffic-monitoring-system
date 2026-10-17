@@ -52,15 +52,6 @@ def render_sidebar() -> Tuple[str, float, float]:
             "Settings",
         ]
 
-        icons = {
-            "Overview": "📊",
-            "Live Monitoring": "📹",
-            "Video Analysis": "🎬",
-            "Traffic Analytics": "📈",
-            "History": "📜",
-            "Settings": "⚙️",
-        }
-
         # Direct session state binding for instant 1-click navigation
         if "nav_page" not in st.session_state:
             st.session_state["nav_page"] = "Overview"
@@ -68,7 +59,6 @@ def render_sidebar() -> Tuple[str, float, float]:
         selected_page = st.radio(
             "Navigation",
             options=pages,
-            format_func=lambda p: f"{icons.get(p, '•')}  {p}",
             key="nav_page",
             label_visibility="collapsed",
         )
