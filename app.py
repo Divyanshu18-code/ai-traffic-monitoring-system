@@ -1042,7 +1042,7 @@ def render_video_analysis_page(
         st.markdown(
             """
             <div style="background: rgba(0, 210, 106, 0.08); border: 1px solid rgba(0, 210, 106, 0.25); border-radius: 8px; padding: 10px 14px; margin: 10px 0 16px 0; color: #34D399; font-size: 0.88rem; font-weight: 500;">
-                ⚡ <b>Real-Time Fast Detection Mode:</b> Video upload hote hi instant detect & count hoga — output video disk par save nahi hogi (Storage Saved).
+                ⚡ <b>Real-Time Fast Detection Mode:</b> Instant detection and counting active upon upload — output video writing to disk is disabled (Optimized Storage & Peak Performance).
             </div>
             """,
             unsafe_allow_html=True,
@@ -1212,7 +1212,7 @@ def process_video_file(
         st.markdown(
             """
             <div style="background: rgba(0, 210, 106, 0.08); border: 1px solid rgba(0, 210, 106, 0.25); border-radius: 10px; padding: 14px 18px; margin: 18px 0; color: #34D399; font-size: 0.92rem;">
-                ✅ <b>Live Video Detection & Vehicle Counting Completed:</b> Video was processed and audited in real-time. Output video file was not saved to disk as requested (Storage saved).
+                ✅ <b>Video Analysis & Traffic Audit Completed:</b> Video stream was audited in real-time. Full metrics, class counts, and trajectory logs recorded. Disk write skipped as configured (Zero Storage Overhead).
             </div>
             """,
             unsafe_allow_html=True,
@@ -1264,7 +1264,7 @@ def process_video_file(
             st.markdown(
                 """
                 <div style="background: rgba(255, 255, 255, 0.02); border: 1px dashed rgba(255, 255, 255, 0.12); border-radius: 8px; padding: 12px; text-align: center; color: #94A3B8; font-size: 0.85rem;">
-                    ⚡ <b>Fast Memory Mode</b><br>Output video disk par save nahi hui.
+                    ⚡ <b>In-Memory Inference Mode</b><br>Annotated video writing disabled (Optimized Storage).
                 </div>
                 """,
                 unsafe_allow_html=True,
